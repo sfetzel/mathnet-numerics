@@ -52,6 +52,8 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
         /// </summary>
         [TestCase(1, 2, 3, 4)]
         [TestCase(1, 2, 0, 0)]
+        [TestCase(-2, 1, -3, 9)]
+        [TestCase(-2, -1, -3, -9)]
         public void CalculateGivensRotationTest(double ar, double ai, double br, double bi)
         {
             (var a, var b) = (new Complex(ar, ai), new Complex(br, bi));
@@ -60,6 +62,7 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
             (var c, var d) = rotation * (new Complex(ar, ai), new Complex(br, bi));
             Assert.Multiple(() =>
             {
+                Assert.That(rotation.Cosine.MagnitudeSquared() + rotation.Sine * rotation.Sine, Is.EqualTo(1).Within(1e-12));
                 Assert.That(c.Magnitude, Is.EqualTo(norm).Within(1e-12));
                 Assert.That(a.Magnitude, Is.EqualTo(norm).Within(1e-12));
                 Assert.That(d.Magnitude, Is.EqualTo(0).Within(1e-12));
@@ -146,12 +149,15 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
         [Test]
         public void Turnover()
         {
+            // rotation1 = ({(0,40166320883712187, -0,07302967433402213)}, 0.9128709291752769)
             (GivensRotation rotation1, _) = GivensRotation.Create(new Complex(1, 2), new Complex(3, 4));
+            // rotation2 = ({(0,5701081850582409, -0,019325701188414927)}, 0.82134230050763524)
             (GivensRotation rotation2, _) = GivensRotation.Create(new Complex(4, 5), new Complex(6, 7));
+            // rotation3 = ({(0,619902067513713, -0,008669958986205754)}, 0.784631288251623)
             (GivensRotation rotation3, _) = GivensRotation.Create(new Complex(7, 8), new Complex(9, 10));
-            var a = new Complex(3, 5);
-            var b = new Complex(7, 2);
-            var c = new Complex(9, 12);
+            var a = new Complex(3, 0);
+            var b = new Complex(7, 0);
+            var c = new Complex(9, 0);
 
             Complex d = a;
             Complex e = b;
@@ -167,8 +173,14 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
             (a, b) = rotation5 * (a, b);
             (b, c) = rotation4 * (b, c);
 
-            Assert.AreEqual(d.Real, a.Real, 1e-12);
-            Assert.AreEqual(d.Imaginary, a.Imaginary, 1e-12);
+            Assert.That(a.Real, Is.EqualTo(d.Real).Within(1e-12));
+            Assert.That(a.Imaginary, Is.EqualTo(d.Imaginary).Within(1e-12));
+
+            Assert.That(b.Real, Is.EqualTo(e.Real).Within(1e-12));
+            Assert.That(b.Imaginary, Is.EqualTo(e.Imaginary).Within(1e-12));
+
+            Assert.That(c.Real, Is.EqualTo(f.Real).Within(1e-12));
+            Assert.That(c.Imaginary, Is.EqualTo(f.Imaginary).Within(1e-12));
         }
     }
 }

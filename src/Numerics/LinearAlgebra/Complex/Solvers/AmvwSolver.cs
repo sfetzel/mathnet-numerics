@@ -33,6 +33,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Complex = System.Numerics.Complex;
 using System.Reflection.Metadata.Ecma335;
+using System.Security.Cryptography;
 
 namespace MathNet.Numerics.LinearAlgebra.Complex.Solvers
 {
@@ -96,33 +97,75 @@ namespace MathNet.Numerics.LinearAlgebra.Complex.Solvers
                 Sine = 0;
             }
 
-            public static (GivensRotation first, GivensRotation second, GivensRotation third) Turnover(GivensRotation leftRotation, GivensRotation middleRotation, GivensRotation rightRotation)
+            public void Invert()
+            {
+                Cosine = Cosine.Conjugate();
+                Sine = -Sine;
+            }
+
+            public static (GivensRotation first, GivensRotation second, GivensRotation third) Turnover(GivensRotation g1, GivensRotation g2, GivensRotation g3)
             {
                 // calculate a turnover on the second and third row of first column
+                
+                // Assuming T = g1*g2*g3
+                // Doing the turnover operation is the same as calculating the QR factorization
+                // of T. First rotation is on the second row and third row of the first column, therefore
+                // zeroing the last row in the first column.
 
                 // t21 is the content of first column, second row.
-                var t21 = leftRotation.Sine * rightRotation.Cosine + leftRotation.Cosine.Conjugate() * middleRotation.Cosine * rightRotation.Sine;
-                var t31 = new Complex(middleRotation.Sine * rightRotation.Sine, 0);
+                var t11 = g1.Cosine * g3.Cosine - g1.Sine * g2.Cosine * g3.Sine;
+                var t21 = - (g1.Cosine.Conjugate() * g2.Cosine * g3.Sine) - g1.Sine * g3.Cosine;
 
-                (var firstRotation, var norm1) = GivensRotation.Create(ref t21, ref t31);
+                // −𝑠1re(𝑐3)−𝑠3re(𝑐2𝑐1')
+                //var t21_real = -g1.Sine * g3.Cosine.Real - g3.Sine * (g2.Cosine.Real * g1.Cosine.Real - g2.Cosine.Imaginary * g1.Cosine.Imaginary);
 
-                var t11 = leftRotation.Cosine * rightRotation.Cosine - leftRotation.Sine * middleRotation.Cosine * rightRotation.Sine;
+                // −𝑠1im(𝑐3)−𝑠3im(𝑐2𝑐1')
+                //var t21_imaginary = -g1.Sine * g3.Cosine.Imaginary - g3.Sine * (-g2.Cosine.Real * g1.Cosine.Imaginary + g2.Cosine.Imaginary * g1.Cosine.Real);
+                //var t21 = new Complex(t21_real, t21_imaginary);
+
+                var t31 = new Complex(g2.Sine * g3.Sine, 0);
+
+                (var r1, var norm1) = GivensRotation.Create(ref t21, ref t31);
+
                 // t21 contains now norm1 because of the call to GivensRotation.Create.
 
-                (var secondRotation, _) = GivensRotation.Create(ref t11, ref t21);
+                (var r2, _) = GivensRotation.Create(t11, t21);
 
-                var t23 = middleRotation.Cosine * firstRotation.Cosine + leftRotation.Cosine * middleRotation.Sine * firstRotation.Sine;
+                /*var t13 = new Complex(g1.Sine * g2.Sine, 0);
+                var t23 = g2.Sine * g1.Cosine.Conjugate();
+                var t33 = g2.Cosine.Conjugate();
+
+                (t23, t33) = firstRotation * (t23, t33);
+                (t13, t23) = secondRotation * (t13, t23);*/
+
+                // from fortran source code
+                /*var t23 = g2.Cosine * firstRotation.Cosine + g1.Cosine * g2.Sine * firstRotation.Sine;
                 // ensuring zero imaginary part by explicitly calculating the real part.
-                var t33 = new Complex(leftRotation.Sine * middleRotation.Sine * secondRotation.Sine
-                    - firstRotation.Sine * (secondRotation.Cosine.Real * middleRotation.Cosine.Real + secondRotation.Cosine.Imaginary * middleRotation.Cosine.Imaginary)
-                    + middleRotation.Sine * (
-                        leftRotation.Cosine.Real * (firstRotation.Cosine.Real * secondRotation.Cosine.Real + firstRotation.Cosine.Imaginary * secondRotation.Cosine.Imaginary)
+                var t33 = new Complex(g1.Sine * g2.Sine * secondRotation.Sine
+                    - firstRotation.Sine * (secondRotation.Cosine.Real * g2.Cosine.Real + secondRotation.Cosine.Imaginary * g2.Cosine.Imaginary)
+                    + g2.Sine * (
+                        g1.Cosine.Real * (firstRotation.Cosine.Real * secondRotation.Cosine.Real + firstRotation.Cosine.Imaginary * secondRotation.Cosine.Imaginary)
                         + firstRotation.Cosine.Imaginary * (firstRotation.Cosine.Real * secondRotation.Cosine.Imaginary - firstRotation.Cosine.Imaginary * secondRotation.Cosine.Real)
-                    ), 0);
+                    ), 0);*/
 
-                (var thirdRotation, _) = GivensRotation.Create(ref t23, ref t33);
+                var t12 = g1.Cosine * g3.Sine + g2.Cosine * g1.Sine * g3.Cosine.Conjugate();
+                var t22 = g2.Cosine * (g1.Cosine * g3.Cosine).Conjugate() - g1.Sine * g3.Sine;
+                var t32 = -g2.Sine * g3.Cosine.Conjugate();
 
-                return (firstRotation, secondRotation, thirdRotation);
+                (t22, t32) = r1 * (t22, t32);
+                (_, t22) = r2 * (t12, t22);
+
+                (var r3, _) = GivensRotation.Create(t22, t32);
+
+                // r3*r2*r1 * (g1*g2*g3) = I
+                // Therefore (r3*r2*r1)^{-1} = g1*g2*g3
+                // r1^{-1} r2^{-1} r3^{-1} = g1*g2*g3
+
+                r3.Invert();
+                r2.Invert();
+                r1.Invert();
+
+                return (r1, r2, r3);
             }
         }
 
@@ -270,7 +313,6 @@ namespace MathNet.Numerics.LinearAlgebra.Complex.Solvers
             // A = Q * C' * (B' + e1 * y')
             // where Q, C, B are unitary and stored using Givens rotations.
             var factorization = AmvwFactorization.Create(coefficients);
-
 
             return null;
         }
