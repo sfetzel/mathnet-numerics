@@ -45,16 +45,18 @@ namespace MathNet.Numerics.LinearAlgebra.Complex.Solvers
     public class AmvwSolver
     {
         /// <summary>
-        /// Represents a Givens Rotator, which corresponds to the matrix [c, s; -s, c'].
+        /// Represents a Givens Rotator, which corresponds to the matrix
+        /// [ c, -s;
+        ///  s, c'].
         /// </summary>
-        public class GivensRotation
+        public class GivensRotation : ICloneable
         {
             public Complex Cosine { get; set; }
             public double Sine { get; set; }
 
             public static (Complex a, Complex b) operator *(GivensRotation rotation, (Complex a, Complex b) tuple)
             {
-                return (tuple.a * rotation.Cosine + tuple.b * rotation.Sine, tuple.b * rotation.Cosine.Conjugate() - tuple.a * rotation.Sine);
+                return (tuple.a * rotation.Cosine - tuple.b * rotation.Sine, tuple.b * rotation.Cosine.Conjugate() + tuple.a * rotation.Sine);
             }
 
             public GivensRotation(Complex cosine, double sine)
@@ -75,9 +77,11 @@ namespace MathNet.Numerics.LinearAlgebra.Complex.Solvers
                     // the rotation must be described with a complex cosine
                     // and a real sine.
                     // This is done by factoring out the phase of the sine part.
+                    var originalCosine = (a / alpha).Conjugate();
+                    var originalSine = -b / alpha;
 
-                    cosine = (a * (b / bNorm).Conjugate() / alpha).Conjugate();
-                    sine = bNorm / alpha;
+                    cosine = (originalCosine.Conjugate() * (b.Conjugate() / bNorm)).Conjugate();
+                    sine = -bNorm / alpha;
                 }
                 return (new GivensRotation(cosine, sine), alpha);
             }
@@ -85,7 +89,7 @@ namespace MathNet.Numerics.LinearAlgebra.Complex.Solvers
             public static (GivensRotation Rotation, double norm) Create(ref Complex a, ref Complex b)
             {
                 (var rotation, var alpha) = Create(a, b);
-                a = rotation.Cosine * a + b * rotation.Sine;
+                a = rotation.Cosine * a - b * rotation.Sine;
                 b = 0;
                 
                 return (rotation, alpha);
@@ -114,14 +118,7 @@ namespace MathNet.Numerics.LinearAlgebra.Complex.Solvers
 
                 // t21 is the content of first column, second row.
                 var t11 = g1.Cosine * g3.Cosine - g1.Sine * g2.Cosine * g3.Sine;
-                var t21 = - (g1.Cosine.Conjugate() * g2.Cosine * g3.Sine) - g1.Sine * g3.Cosine;
-
-                // −𝑠1re(𝑐3)−𝑠3re(𝑐2𝑐1')
-                //var t21_real = -g1.Sine * g3.Cosine.Real - g3.Sine * (g2.Cosine.Real * g1.Cosine.Real - g2.Cosine.Imaginary * g1.Cosine.Imaginary);
-
-                // −𝑠1im(𝑐3)−𝑠3im(𝑐2𝑐1')
-                //var t21_imaginary = -g1.Sine * g3.Cosine.Imaginary - g3.Sine * (-g2.Cosine.Real * g1.Cosine.Imaginary + g2.Cosine.Imaginary * g1.Cosine.Real);
-                //var t21 = new Complex(t21_real, t21_imaginary);
+                var t21 = (g1.Cosine.Conjugate() * g2.Cosine * g3.Sine) + g1.Sine * g3.Cosine;
 
                 var t31 = new Complex(g2.Sine * g3.Sine, 0);
 
@@ -131,26 +128,9 @@ namespace MathNet.Numerics.LinearAlgebra.Complex.Solvers
 
                 (var r2, _) = GivensRotation.Create(t11, t21);
 
-                /*var t13 = new Complex(g1.Sine * g2.Sine, 0);
-                var t23 = g2.Sine * g1.Cosine.Conjugate();
-                var t33 = g2.Cosine.Conjugate();
-
-                (t23, t33) = firstRotation * (t23, t33);
-                (t13, t23) = secondRotation * (t13, t23);*/
-
-                // from fortran source code
-                /*var t23 = g2.Cosine * firstRotation.Cosine + g1.Cosine * g2.Sine * firstRotation.Sine;
-                // ensuring zero imaginary part by explicitly calculating the real part.
-                var t33 = new Complex(g1.Sine * g2.Sine * secondRotation.Sine
-                    - firstRotation.Sine * (secondRotation.Cosine.Real * g2.Cosine.Real + secondRotation.Cosine.Imaginary * g2.Cosine.Imaginary)
-                    + g2.Sine * (
-                        g1.Cosine.Real * (firstRotation.Cosine.Real * secondRotation.Cosine.Real + firstRotation.Cosine.Imaginary * secondRotation.Cosine.Imaginary)
-                        + firstRotation.Cosine.Imaginary * (firstRotation.Cosine.Real * secondRotation.Cosine.Imaginary - firstRotation.Cosine.Imaginary * secondRotation.Cosine.Real)
-                    ), 0);*/
-
-                var t12 = g1.Cosine * g3.Sine + g2.Cosine * g1.Sine * g3.Cosine.Conjugate();
+                var t12 = -g1.Cosine * g3.Sine - g2.Cosine * g1.Sine * g3.Cosine.Conjugate();
                 var t22 = g2.Cosine * (g1.Cosine * g3.Cosine).Conjugate() - g1.Sine * g3.Sine;
-                var t32 = -g2.Sine * g3.Cosine.Conjugate();
+                var t32 = g2.Sine * g3.Cosine.Conjugate();
 
                 (t22, t32) = r1 * (t22, t32);
                 (_, t22) = r2 * (t12, t22);
@@ -167,15 +147,55 @@ namespace MathNet.Numerics.LinearAlgebra.Complex.Solvers
 
                 return (r1, r2, r3);
             }
+
+            /// <summary>
+            /// Fuses this rotation with the provided rotation from the right.
+            /// Assuming this rotation is g1 and the provided rotation is g2, we
+            /// compute g1 = g1*g2. Makes the sine part real again using the 
+            /// resulting complex numbers f and g (diagonal matrix entries).
+            /// In accordance with page 957 of [1].
+            /// </summary>
+            /// <param name="rotation">The right rotation.</param>
+            /// <returns></returns>
+            public (Complex f, Complex g) Fusion(GivensRotation rotation)
+            {
+                var cosine = Cosine * rotation.Cosine - Sine * rotation.Sine;
+                var complexSine = Sine * rotation.Cosine + Cosine.Conjugate() * rotation.Sine;
+
+                Sine = complexSine.Magnitude;
+                Complex phi = Complex.One;
+                if (Sine != 0)
+                {
+                    // f is equal to phi.
+                    phi = complexSine / Sine;
+                    // the formula in [1] is incorrect. 
+                    Cosine = cosine / phi;
+                }
+                else
+                {
+                    Cosine = cosine;
+                }
+                var norm = Math.Sqrt(Cosine.MagnitudeSquared() + Sine * Sine);
+
+                Sine /= norm;
+                Cosine /= norm;
+
+                return (phi, phi.Conjugate());
+            }
+
+            public object Clone()
+            {
+                return new GivensRotation(Cosine, Sine);
+            }
         }
 
         public class UnitaryMatrix
         {
-            public GivensRotation[] CoreTransformations { get; set; }
+            public GivensRotation[] Rotations { get; set; }
 
             public UnitaryMatrix(GivensRotation[] rotations)
             {
-                CoreTransformations = rotations;
+                Rotations = rotations;
             }
 
             /// <summary>
@@ -228,41 +248,43 @@ namespace MathNet.Numerics.LinearAlgebra.Complex.Solvers
             /// <summary>
             /// 
             /// </summary>
-            /// <param name="coefficients">The coefficient vector starting with a_0.</param>
+            /// <param name="coefficients">The coefficient vector starting with a_0 without the coefficient a_{n-1}=1.</param>
             /// <returns></returns>
             public static AmvwFactorization Create(Complex[] coefficients)
             {
-                var m = coefficients.Length;
-                var Q = new GivensRotation[m];
-                var D = new Complex[m];
+                var n = coefficients.Length;
+                var Q = new GivensRotation[n - 1];
+                var D = new Complex[n + 1];
 
-                for (var i = 0; i < m - 1; ++i)
+                for (var i = 0; i < n - 1; ++i)
                 {
-                    Q[i] = new GivensRotation(0, -1);
+                    Q[i] = new GivensRotation(0, 1);
 
                     D[i] = Complex.One;
                 }
-                Q[m - 1] = new GivensRotation(1, 0);
+                D[n - 1] = Complex.One;
+                D[n] = Complex.One;
+
                 Complex[] x = CreateVectorX(coefficients);
 
                 var B = UnitaryMatrix.Create(x);
-                var C = new UnitaryMatrix(B.CoreTransformations.
+                var C = new UnitaryMatrix(B.Rotations.
                     Select(x => new GivensRotation(x.Cosine.Conjugate(), x.Sine)).Reverse().ToArray());
 
-                return new AmvwFactorization() { B = B, C = C, D = D, Q = new(Q), n = m };
+                return new AmvwFactorization() { B = B, C = C, D = D, Q = new(Q), n = n };
             }
 
             public static Complex[] CreateVectorX(Complex[] coefficients)
             {
-                var m = coefficients.Length;
+                var n = coefficients.Length;
                 // create vector x = (-a_1, -a_2, ..., -a_{n-1}, -a_0, 1)
-                var x = new Complex[m + 1];
-                for (var i = 0; i < m - 1; ++i)
+                var x = new Complex[n + 1];
+                for (var i = 0; i < n - 1; ++i)
                 {
                     x[i] = -coefficients[i + 1];
                 }
-                x[m - 1] = -coefficients[0];
-                x[m] = 1;
+                x[n - 1] = -coefficients[0];
+                x[n] = 1;
                 return x;
             }
 
@@ -275,24 +297,81 @@ namespace MathNet.Numerics.LinearAlgebra.Complex.Solvers
                 // h_{{i+1},i} = c_{{i+1},i} * r_{i,i}
 
                 // r_{i,i}
-                Complex a = B.CoreTransformations[i].Sine / C.CoreTransformations[n - 1 - i].Sine;
+                Complex a = B.Rotations[i].Sine / C.Rotations[n - 1 - i].Sine;
                 // r_{i+1,i+1}
-                Complex d = B.CoreTransformations[i + 1].Sine / C.CoreTransformations[n - 1 - (i + 1)].Sine;
+                Complex d = B.Rotations[i + 1].Sine / C.Rotations[n - 1 - (i + 1)].Sine;
 
                 // h_{i,i} = c_{i,i-1} * r_{i-1,i} + c_{i,i} * r_{i,i}
                 // r_{i-1,i} = (h_{i,i} - c_{i,i} * r_{i,i}) / c_{i,i-1}
                 // r_{i,i+1} = (h_{i+1, i+1} - c_{i+1, i+1} * r_{i+1, i+1}) / c_{i+1, i}
-                Complex b = (B.CoreTransformations[i].Cosine - C.CoreTransformations[n - 1 - i].Cosine.Conjugate() * d) / C.CoreTransformations[n - 1 - i].Sine;
+                Complex b = (B.Rotations[i].Cosine - C.Rotations[n - 1 - i].Cosine.Conjugate() * d) / C.Rotations[n - 1 - i].Sine;
 
                 Complex c = 0;
 
-                d = Q.CoreTransformations[i + 1].Cosine * d;
+                // Apply diagonal:
+                a *= D[i];
+                b *= D[i];
+                d *= D[i + 1];
 
-                (a, c) = Q.CoreTransformations[i] * (a, c);
-                (b, d) = Q.CoreTransformations[i] * (b, d);
+                // Apply Q
+                if (i + 1 < n - 1)
+                {
+                    d = Q.Rotations[i + 1].Cosine * d;
+                }
+
+                (a, c) = Q.Rotations[i] * (a, c);
+                (b, d) = Q.Rotations[i] * (b, d);
 
                 return (a, b, c, d);
             }
+
+            public (Complex e1, Complex e2) GetWilkinsonShift()
+            {
+                (var AUpperLeft, var AUpperRight, var ALowerLeft, var ALowerRight) = GetPart(n - 1);
+                return AmvwSolver.GetWilkinsonShift(AUpperLeft, AUpperRight, ALowerLeft, ALowerRight);
+            }
+        }
+
+        internal static (Complex a, Complex b) GetWilkinsonShift(Complex AUpperLeft, Complex AUpperRight, Complex ALowerLeft, Complex ALowerRight)
+        {
+            var trace = AUpperLeft + ALowerRight;
+            var determinant = AUpperLeft * ALowerRight - ALowerLeft * AUpperRight;
+
+            var disc = (trace * trace - 4 * determinant).SquareRoot();
+
+            var traceDiscSum = trace + disc;
+            var traceDiscDiff = trace - disc;
+
+            var e1 = Complex.Zero;
+            var e2 = Complex.Zero;
+
+            if (traceDiscSum.Magnitude > traceDiscDiff.Magnitude)
+            {
+                if (traceDiscSum.Magnitude > 0)
+                {
+                    e1 = traceDiscSum / 2;
+                    e2 = determinant / e1;
+                }
+            }
+            else
+            {
+                if (traceDiscDiff.Magnitude > 0)
+                {
+                    e1 = traceDiscDiff / 2;
+                    e2 = determinant / e1;
+                }
+            }
+
+            return (e1, e2);
+        }
+
+        public static (GivensRotation, Complex f, Complex g) PassthroughDiagonal(Complex d, Complex e, GivensRotation rotation)
+        {
+            var f = e;
+            var g = d;
+            var s2 = rotation.Sine;
+            var c2 = rotation.Cosine * d * e.Conjugate();
+            return (new GivensRotation(c2, s2), f, g);
         }
 
         public List<Complex> Solve(Polynomial polynomial)
@@ -305,7 +384,7 @@ namespace MathNet.Numerics.LinearAlgebra.Complex.Solvers
             return Solve(coefficients.Select(x => new Complex(x, 0)).ToArray());
         }
 
-        public List<Complex> Solve(Complex[] coefficients)
+        public static List<Complex> Solve(Complex[] coefficients)
         {
             var m = coefficients.Length;
 
@@ -313,6 +392,68 @@ namespace MathNet.Numerics.LinearAlgebra.Complex.Solvers
             // A = Q * C' * (B' + e1 * y')
             // where Q, C, B are unitary and stored using Givens rotations.
             var factorization = AmvwFactorization.Create(coefficients);
+            var n = factorization.n;
+            Complex Aul; Complex Aur; Complex All; Complex Alr;
+
+            for (int j = 0; j < 30; ++j)
+            {
+                (var A11, var A12, var A21, var A22) = factorization.GetPart(0);
+                (Aul, Aur, All, Alr) = factorization.GetPart(n-2);
+                
+                (var shift1, var shift2) = GetWilkinsonShift(Aul, Aur, All, Alr);
+                Console.WriteLine("Aul={0}, Aur={1}, All={2}, Alr={3}", Aul, Aur, All, Alr);
+
+                //var shift = (shift1 - Alr).MagnitudeSquared() < (shift2 - Alr).MagnitudeSquared() ? shift1 : shift2;
+                var shift = 0;
+
+                (var u1, _) = GivensRotation.Create(A11 - shift, A21);
+
+                var u1H = (GivensRotation)u1.Clone();
+                u1H.Invert();
+
+                // fuse u1 with the first Q core transformation.
+                (factorization.D[0], factorization.D[1]) = u1H.Fusion(factorization.Q.Rotations[0]);
+
+                factorization.Q.Rotations[0] = u1H;
+
+                var transformation = u1;
+                // i is equal to the active rows (i,i+1) the current rotation works on.
+                for (int i = 0; i < n;)
+                {
+                    // Turnover on B:
+                    (transformation, factorization.B.Rotations[i], factorization.B.Rotations[i + 1]) =
+                        GivensRotation.Turnover(factorization.B.Rotations[i], factorization.B.Rotations[i + 1], transformation);
+                    // the transformation moved down one row:
+                    i += 1;
+
+                    // Turnover on C:
+                    (transformation, factorization.C.Rotations[n - 1 - i], factorization.C.Rotations[n - 1 - (i - 1)]) =
+                        GivensRotation.Turnover(factorization.C.Rotations[n - 1 - i], factorization.C.Rotations[n - 1 - (i - 1)], transformation);
+
+                    i -= 1;
+
+                    // pass through diagonal
+                    (transformation, factorization.D[i], factorization.D[i + 1]) =
+                        PassthroughDiagonal(factorization.D[i], factorization.D[i + 1], transformation);
+
+                    if (i == n - 2)
+                    {
+                        // Fuse the transformation with the last rotation in Q.
+                        factorization.Q.Rotations[i].Fusion(transformation);
+                        break;
+                    }
+                    else
+                    {
+                        // Turnover on Q:
+                        (transformation, factorization.Q.Rotations[i], factorization.Q.Rotations[i + 1]) =
+                            GivensRotation.Turnover(factorization.Q.Rotations[i], factorization.Q.Rotations[i + 1], transformation);
+                        i += 1;
+                    }
+                }
+            }
+
+            (Aul, Aur, All, Alr) = factorization.GetPart(n - 2);
+            Console.WriteLine("Aul={0}, Alr={1}", Aul, Alr);
 
             return null;
         }

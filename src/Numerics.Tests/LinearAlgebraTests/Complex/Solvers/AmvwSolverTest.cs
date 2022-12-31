@@ -33,6 +33,7 @@ using MathNet.Numerics.LinearAlgebra;
 using MathNet.Numerics.LinearAlgebra.Complex;
 using MathNet.Numerics.LinearAlgebra.Complex.Solvers;
 using MathNet.Numerics.Providers.LinearAlgebra;
+using MathNet.Numerics;
 using NUnit.Framework;
 
 namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
@@ -46,12 +47,26 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
     [TestFixture, Category("LA")]
     public class AmvwSolverTest
     {
+        [Test]
+        public void ApplyGivensRotation()
+        {
+            var rotation = new GivensRotation(new Complex(0.5919, -0.0143), 0.8059);
+            var vector = (new Complex(3, 4), new Complex(7, 8));
+            (var a, var b) = rotation * vector;
+
+            Assert.That(a.Real, Is.EqualTo(-3.8083).Within(1e-3));
+            Assert.That(a.Imaginary, Is.EqualTo(-4.1221).Within(1e-3));
+            Assert.That(b.Real, Is.EqualTo(6.4470).Within(1e-3));
+            Assert.That(b.Imaginary, Is.EqualTo(8.0587).Within(1e-3));
+        }
+
         /// <summary>
         /// Checks if the method GivensRotation.Create calculates a rotation,
         /// which zeros the second component of the vector (1+2j, 3+4j).
         /// </summary>
         [TestCase(1, 2, 3, 4)]
         [TestCase(1, 2, 0, 0)]
+        [TestCase(3, 4, 7, 8)]
         [TestCase(-2, 1, -3, 9)]
         [TestCase(-2, -1, -3, -9)]
         public void CalculateGivensRotationTest(double ar, double ai, double br, double bi)
@@ -60,13 +75,22 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
             (var rotation, var norm) = AmvwSolver.GivensRotation.Create(ref a, ref b);
             Assert.That(norm, Is.EqualTo(Math.Sqrt(ar*ar + ai*ai + br*br + bi*bi)));
             (var c, var d) = rotation * (new Complex(ar, ai), new Complex(br, bi));
+
+            Assert.That(a.Magnitude, Is.EqualTo(norm).Within(1e-12));
+            Assert.That(b.Magnitude, Is.EqualTo(0).Within(1e-12));
+
+            (a, b) = (new Complex(ar, ai), new Complex(br, bi));
             Assert.Multiple(() =>
             {
                 Assert.That(rotation.Cosine.MagnitudeSquared() + rotation.Sine * rotation.Sine, Is.EqualTo(1).Within(1e-12));
+                
                 Assert.That(c.Magnitude, Is.EqualTo(norm).Within(1e-12));
-                Assert.That(a.Magnitude, Is.EqualTo(norm).Within(1e-12));
+                Assert.That(c.Real, Is.EqualTo((rotation.Cosine * a - rotation.Sine * b).Real).Within(1e-12));
+                Assert.That(c.Imaginary, Is.EqualTo((rotation.Cosine * a - rotation.Sine * b).Imaginary).Within(1e-12));
+
                 Assert.That(d.Magnitude, Is.EqualTo(0).Within(1e-12));
-                Assert.That(b.Magnitude, Is.EqualTo(0).Within(1e-12));
+                Assert.That(d.Real, Is.EqualTo((rotation.Cosine.Conjugate() * b + rotation.Sine * a).Real).Within(1e-12));
+                Assert.That(d.Imaginary, Is.EqualTo((rotation.Cosine.Conjugate() * b + rotation.Sine * a).Imaginary).Within(1e-12));
             });
         }
 
@@ -85,11 +109,12 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
 
             var norm = Math.Sqrt(vector.Select(x => x.MagnitudeSquared()).Sum());
             var matrix = AmvwSolver.UnitaryMatrix.Create(vector);
-            
+            Assert.That(matrix.Rotations.Length, Is.EqualTo(vector.Length - 1));
+
             // apply transformations to original vector
-            for(var i = matrix.CoreTransformations.Length-1; i >= 0; --i)
+            for(var i = matrix.Rotations.Length-1; i >= 0; --i)
             {
-                var rotation = matrix.CoreTransformations[i];
+                var rotation = matrix.Rotations[i];
                 (copy[i], copy[i + 1]) = rotation * (copy[i], copy[i + 1]);
             }
 
@@ -111,18 +136,29 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
                 new Complex(3, 4),
                 new Complex(5, 6)
             };
+            // A is a 3x3 matrix.
             var factorization = AmvwFactorization.Create(coefficients);
 
             // The factorization should be equal to the companion matrix.
-            (var a, var b, var c, var d) = factorization.GetPart(0);
-            Assert.Multiple(() =>
-            {
-                Assert.That(a.Magnitude, Is.EqualTo(0).Within(1e-12));
-                Assert.That(c.Real, Is.EqualTo(1).Within(1e-12));
-                Assert.That(c.Imaginary, Is.EqualTo(0).Within(1e-12));
-                Assert.That(b.Magnitude, Is.EqualTo(0).Within(1e-12));
-                Assert.That(d.Magnitude, Is.EqualTo(0).Within(1e-12));
-            });
+            (var A00, var A01, var A10, var A11) = factorization.GetPart(0);
+                Assert.That(A00.Magnitude, Is.EqualTo(0).Within(1e-12));
+                Assert.That(A10.Real, Is.EqualTo(1).Within(1e-12));
+                Assert.That(A10.Imaginary, Is.EqualTo(0).Within(1e-12));
+                Assert.That(A01.Magnitude, Is.EqualTo(0).Within(1e-12));
+                Assert.That(A11.Magnitude, Is.EqualTo(0).Within(1e-12));
+
+            (var A11_, var A12, var A21, var A22) = factorization.GetPart(1);
+                Assert.That(A11_.Magnitude, Is.EqualTo(0).Within(1e-12));
+                Assert.That(A21.Real, Is.EqualTo(1).Within(1e-12));
+                Assert.That(A21.Imaginary, Is.EqualTo(0).Within(1e-12));
+                Assert.That(A12.Magnitude, Is.EqualTo(0).Within(1e-12));
+                Assert.That(A22.Magnitude, Is.EqualTo(0).Within(1e-12));
+        }
+
+        [Test]
+        public void GetPart()
+        {
+
         }
 
         [Test]
@@ -181,6 +217,81 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
 
             Assert.That(c.Real, Is.EqualTo(f.Real).Within(1e-12));
             Assert.That(c.Imaginary, Is.EqualTo(f.Imaginary).Within(1e-12));
+        }
+
+        [TestCase(3, 4, 7, 8)]
+        public void Fusion(double ar, double ai, double br, double bi)
+        {
+
+            // c1=0.40166320883712187-0.07302967433402213j, s1=-0.9128709291752769
+            (var g1, _) = GivensRotation.Create(new Complex(1, 2), new Complex(3, 4));
+            // c2=0.5919216793966253-0.01426317299750905j, s2=-0.805869274359261 
+            (var g2, _) = GivensRotation.Create(new Complex(5, 6), new Complex(7, 8));
+
+            var a = new Complex(ar, ai);
+            var b = new Complex(br, bi);
+
+            // calculate g1 * g2 * (a,b).
+            (var c, var d) = g1 * (g2 * (a, b));
+
+            (Complex f, Complex g) = g1.Fusion(g2);
+            
+            // calculate g1 * diag([f, g]) * (a,b).
+            (a, b) = g1 * (f * a, g * b);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(c.Real, Is.EqualTo(a.Real).Within(1e-12));
+                Assert.That(c.Imaginary, Is.EqualTo(a.Imaginary).Within(1e-12));
+                Assert.That(d.Real, Is.EqualTo(b.Real).Within(1e-12));
+                Assert.That(d.Imaginary, Is.EqualTo(b.Imaginary).Within(1e-12));
+            });
+        }
+
+        [Test]
+        public void PassthroughDiagonal()
+        {
+            var d = new Complex(3, 4) / 5;
+            var e = new Complex(3, -4) / 5;
+            (var rotation, _) = GivensRotation.Create(new Complex(5, 4), new Complex(3, 1));
+
+            (var passedRotation, var f, var g) = AmvwSolver.PassthroughDiagonal(d, e, rotation);
+
+            // checking passedRotation * diag([f, g]) == diag([d, e]) * rotation
+
+            var expected11 = d * rotation.Cosine;
+            var expected12 = d * (-rotation.Sine);
+            var expected21 = e * rotation.Sine;
+            var expected22 = e * rotation.Cosine.Conjugate();
+
+            var actual11 = passedRotation.Cosine * f;
+            var actual12 = -passedRotation.Sine * g;
+            var actual21 = passedRotation.Sine * f;
+            var actual22 = passedRotation.Cosine.Conjugate() * g;
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(expected11.Real, Is.EqualTo(actual11.Real).Within(1e-12));
+                Assert.That(expected11.Imaginary, Is.EqualTo(actual11.Imaginary).Within(1e-12));
+
+                Assert.That(expected12.Real, Is.EqualTo(actual12.Real).Within(1e-12));
+                Assert.That(expected12.Imaginary, Is.EqualTo(actual12.Imaginary).Within(1e-12));
+
+                Assert.That(expected21.Real, Is.EqualTo(actual21.Real).Within(1e-12));
+                Assert.That(expected21.Imaginary, Is.EqualTo(actual21.Imaginary).Within(1e-12));
+
+                Assert.That(expected22.Real, Is.EqualTo(actual22.Real).Within(1e-12));
+                Assert.That(expected22.Imaginary, Is.EqualTo(actual22.Imaginary).Within(1e-12));
+            });
+        }
+
+        [Test]
+        public void Solve()
+        {
+            // (x - (1+ 2i))(x - (1- 2i))(x - 5) = -25 + 15 x - 7 x^2 + x^3
+            var coefficients = new Complex[] { -25, 15, -7 }; // leading coeffient is not provided.
+
+            AmvwSolver.Solve(coefficients);
         }
     }
 }
