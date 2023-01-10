@@ -48,6 +48,7 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
     public class AmvwSolverTest
     {
         // f(x) = (1+2j) + (3+4j)*x + (5+6j)*x^2 + x^3
+        // f(x) = (x - (-4.3533-5.9811i))*(x-(-0.37265+0.43338i))*(x-(-0.27401-0.45232i))
         // n = 3.
         public static Complex[] coefficients = new Complex[]
         {
@@ -55,6 +56,14 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
             new Complex(3, 4),
             new Complex(5, 6)
         };
+
+        public static Complex[] roots = new Complex[]
+        {
+            new Complex(-4.353335455010091, -5.981059347778331),
+            new Complex(-0.372651320121572, 0.433379276936973),
+            new Complex(-0.274013224868337, -0.452319929158646)
+        };
+
 
         [Test]
         public void ApplyGivensRotation()
@@ -314,17 +323,7 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
             diagonal[1, 1] = e;
 
             var actualMatrix = diagonal * r2;
-            Assert.Multiple(() =>
-            {
-                Assert.That(expectedMatrix[0, 0].Real, Is.EqualTo(actualMatrix[0, 0].Real).Within(1e-12));
-                Assert.That(expectedMatrix[0, 0].Imaginary, Is.EqualTo(actualMatrix[0, 0].Imaginary).Within(1e-12));
-                Assert.That(expectedMatrix[1, 0].Real, Is.EqualTo(actualMatrix[1, 0].Real).Within(1e-12));
-                Assert.That(expectedMatrix[1, 0].Imaginary, Is.EqualTo(actualMatrix[1, 0].Imaginary).Within(1e-12));
-                Assert.That(expectedMatrix[0, 1].Real, Is.EqualTo(actualMatrix[0, 1].Real).Within(1e-12));
-                Assert.That(expectedMatrix[0, 1].Imaginary, Is.EqualTo(actualMatrix[0, 1].Imaginary).Within(1e-12));
-                Assert.That(expectedMatrix[1, 1].Real, Is.EqualTo(actualMatrix[1, 1].Real).Within(1e-12));
-                Assert.That(expectedMatrix[1, 1].Imaginary, Is.EqualTo(actualMatrix[1, 1].Imaginary).Within(1e-12));
-            });
+            Assert.That((expectedMatrix - actualMatrix).FrobeniusNorm(), Is.LessThan(1e-12));
         }
 
         [Test]
@@ -457,6 +456,8 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
                 Assert.That(A22.Real, Is.EqualTo(-5).Within(1e-12));
                 Assert.That(A22.Imaginary, Is.EqualTo(-6).Within(1e-12));
             });
+            int i = 2;
+            var test = factorization.D[i - 1] * (factorization.GetDiagonalOfH(i)) / factorization.C.Rotations[i - 1].Sine;
         }
 
         [Test]
@@ -524,15 +525,7 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
             };
             int n = coefficients.Length + 1;
             var factorization = AmvwFactorization.Create(coefficients);
-
-            var yMatrix = Matrix<Complex>.Build.Dense(n, n, 0);
-            var diagonal = Matrix<Complex>.Build.SparseOfDiagonalArray(factorization.D);
-            yMatrix[0, n - 2] = Vector<Complex>.Build.DenseOfArray(coefficients).L2Norm();
-            var Cstar = factorization.C.GetMatrix(n).ConjugateTranspose();
-            var B = factorization.B.GetMatrix(n);
-            var R = diagonal * Cstar * (B + yMatrix);
-            var A = factorization.Q.GetMatrix(n) * R;
-            Console.WriteLine(A);
+            Console.WriteLine(factorization.GetMatrix());
         }
 
 
@@ -567,19 +560,16 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
         }
 
         [Test]
-        public void CreateFactorizationCompareMatrix2()
+        public void CreateFactorizationCheckRoots()
         {
             int n = coefficients.Length + 1;
             var factorization = AmvwFactorization.Create(coefficients);
-
-            var yMatrix = Matrix<Complex>.Build.Dense(n, n, 0);
-            var diagonal = Matrix<Complex>.Build.SparseOfDiagonalArray(factorization.D);
-            yMatrix[0, n - 2] = -9.591663046625440;
-            var Cstar = factorization.C.GetMatrix(n).ConjugateTranspose();
-            var B = factorization.B.GetMatrix(n);
-            var R = diagonal * Cstar * (B + yMatrix);
-            var A = factorization.Q.GetMatrix(n) * R;
-            Console.WriteLine(A);
+            
+            var values = factorization.GetMatrix().Evd().EigenValues;
+            foreach(var root in values)
+            {
+                Assert.That(roots.Select(x => (x - root).Magnitude).Min(), Is.LessThan(1e-2));
+            }
         }
 
         [Test]
@@ -593,35 +583,14 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
             };
             // A is a 3x3 matrix.
             var factorization = AmvwFactorization.Create(coefficients);
+            var expectedMatrix = factorization.GetMatrix();
             var u1 = new GivensRotation(1, 0);
             AmvwSolver.ApplyFrancisStep(u1, factorization);
+            var actualMatrix = factorization.GetMatrix();
+            Console.WriteLine(expectedMatrix);
+            Console.WriteLine(actualMatrix);
 
-            // The factorization should be equal to the companion matrix.
-            (var A00, var A01, var A10, var A11) = factorization.GetTopLeft();
-            (var A11_, var A12, var A21, var A22) = factorization.GetPart(1);
-
-            Console.WriteLine(
-                $"[ {A00}, {A01},   ]" + Environment.NewLine + 
-                $"  {A10}, {A11}, {A12}" + Environment.NewLine +
-                $"         {A21}, {A22}");
-            Assert.Multiple(() =>
-            {
-                Assert.That(A00.Magnitude, Is.EqualTo(0).Within(1e-12));
-                Assert.That(A10.Real, Is.EqualTo(1).Within(1e-12));
-                Assert.That(A10.Imaginary, Is.EqualTo(0).Within(1e-12));
-                Assert.That(A01.Magnitude, Is.EqualTo(0).Within(1e-12));
-                Assert.That(A11.Magnitude, Is.EqualTo(0).Within(1e-12));
-            });
-            Assert.Multiple(() =>
-            {
-                Assert.That(A11_.Magnitude, Is.EqualTo(0).Within(1e-12));
-                Assert.That(A21.Real, Is.EqualTo(1).Within(1e-12));
-                Assert.That(A21.Imaginary, Is.EqualTo(0).Within(1e-12));
-                Assert.That(A12.Real, Is.EqualTo(-3).Within(1e-12));
-                Assert.That(A12.Imaginary, Is.EqualTo(-4).Within(1e-12));
-                Assert.That(A22.Real, Is.EqualTo(-5).Within(1e-12));
-                Assert.That(A22.Imaginary, Is.EqualTo(-6).Within(1e-12));
-            });
+            Assert.That((expectedMatrix - actualMatrix).FrobeniusNorm, Is.LessThan(1e-12));
         }
 
         [TestCase(0, 1)]
@@ -631,21 +600,15 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
             var factorization = AmvwFactorization.Create(coefficients);
             int n = coefficients.Length;
             (var u1, _) = GivensRotation.Create(new Complex(1, 2), new Complex(3, 4));
-            var expectedMatrix = factorization.Q.GetMatrix(n + 1) *
-                    Matrix<Complex>.Build.DiagonalOfDiagonalArray(factorization.D) *
-                    factorization.C.GetMatrix(n + 1).ConjugateTranspose() * factorization.B.GetMatrix(n + 1) * u1.GetMatrix(n+1, i);
+            var expectedMatrix = factorization.GetMatrix() * u1.GetMatrix(n+1, i);
             (var transformation, var j) = factorization.Passthrough(i, u1);
 
             Assert.That(j, Is.EqualTo(expectedI));
 
-            if(i == expectedI)
-            {
-                transformation = new GivensRotation(Complex.One, 0);
-            }
+            var actualMatrix = transformation.GetMatrix(n + 1, j) * factorization.GetMatrix();
 
-            var actualMatrix = transformation.GetMatrix(n + 1, j) * factorization.Q.GetMatrix(n + 1) *
-                    Matrix<Complex>.Build.DiagonalOfDiagonalArray(factorization.D) *
-                    factorization.C.GetMatrix(n + 1).ConjugateTranspose() * factorization.B.GetMatrix(n + 1);
+            Console.WriteLine(expectedMatrix);
+            Console.WriteLine(actualMatrix);
 
             Assert.That((expectedMatrix - actualMatrix).FrobeniusNorm(), Is.LessThan(1e-12));
         }

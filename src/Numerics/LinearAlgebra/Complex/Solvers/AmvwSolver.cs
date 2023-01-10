@@ -367,6 +367,8 @@ namespace MathNet.Numerics.LinearAlgebra.Complex.Solvers
 
             public int n { get; set; }
 
+            public double y { get; set; }
+
             private AmvwFactorization() { }
 
             /// <summary>
@@ -398,9 +400,14 @@ namespace MathNet.Numerics.LinearAlgebra.Complex.Solvers
                 var lastCoefficientPhase = x[n - 1] / lastCoefficientMagnitude;
                 x[n - 1] = lastCoefficientMagnitude;
                 D[n - 1] *= lastCoefficientPhase;
+                //x[n] *= -1;
 
                 // B_i = C_i for i=1,.., n-1
                 var C = UnitaryMatrix.Create(x);
+                //(C.Rotations[n - 1], D[n - 2], D[n - 1]) = PassthroughDiagonalLeft(lastCoefficientPhase, 1, C.Rotations[n - 1]);
+
+                var yNorm = x[0].Real;
+
                 var B = new UnitaryMatrix(C.Rotations.
                     Select(x => new GivensRotation(x.Cosine, x.Sine)).ToArray());
 
@@ -430,9 +437,20 @@ namespace MathNet.Numerics.LinearAlgebra.Complex.Solvers
                 //D[n] *= -1;
 
                 // correct negative sign which is introduced from Q_1,..,Q_{n-1}.
-                D[n] *= n % 2 == 0 ? -1 : 1;
+                D[n] *= n % 2 == 0 ? 1 : -1;
 
-                return new AmvwFactorization() { B = B, C = C, D = D, Q = new(Q), n = n };
+                return new AmvwFactorization() { B = B, C = C, D = D, Q = new(Q), n = n, y = yNorm };
+            }
+
+            public Matrix<Complex> GetMatrix()
+            {
+                var yMatrix = Matrix<Complex>.Build.Sparse(n + 1, n + 1, 0);
+                var diagonal = Matrix<Complex>.Build.SparseOfDiagonalArray(D);
+                yMatrix[0, n - 1] = y;
+                var Cstar = C.GetMatrix(n + 1).ConjugateTranspose();
+                var R = diagonal * Cstar * (B.GetMatrix(n + 1) + yMatrix);
+                var A = Q.GetMatrix(n + 1) * R;
+                return A;
             }
 
             public static Complex[] CreateVectorX(Complex[] coefficients)
@@ -607,7 +625,6 @@ namespace MathNet.Numerics.LinearAlgebra.Complex.Solvers
                     PassthroughDiagonalRight(D[i], D[i + 1], transformation);
                 //Console.WriteLine(transformation.GetMatrix(2, 0) * Matrix<Complex>.Build.DiagonalOfDiagonalArray(new Complex[] { factorization.D[i], factorization.D[i + 1] }));
 
-
                 if (i == n - 2)
                 {
                     // Fuse the transformation with the last rotation in Q.
@@ -708,6 +725,22 @@ namespace MathNet.Numerics.LinearAlgebra.Complex.Solvers
         public List<Complex> Solve(double[] coefficients)
         {
             return Solve(coefficients.Select(x => new Complex(x, 0)).ToArray());
+        }
+
+        public static void ApplyFrancisStep(AmvwFactorization factorization)
+        {
+            int n = factorization.n;
+            (var A11, var A12, var A21, var A22) = factorization.GetTopLeft();
+            (var Aul, var Aur, var All, var Alr) = factorization.GetPart(n - 2);
+
+            (var shift1, var shift2) = GetWilkinsonShift(Aul, Aur, All, Alr);
+
+            var shift = (shift1 - Alr).MagnitudeSquared() < (shift2 - Alr).MagnitudeSquared() ? shift1 : shift2;
+            //var shift = 0;
+            Console.WriteLine("Using shift: {0}", shift1);
+
+            (var u1, _) = GivensRotation.Create(A11 - shift, A21);
+            ApplyFrancisStep(u1, factorization);
         }
 
         public static void ApplyFrancisStep(GivensRotation u1, AmvwFactorization factorization)
