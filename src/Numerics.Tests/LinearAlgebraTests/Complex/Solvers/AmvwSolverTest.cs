@@ -35,6 +35,7 @@ using MathNet.Numerics.LinearAlgebra.Complex.Solvers;
 using MathNet.Numerics.Providers.LinearAlgebra;
 using MathNet.Numerics;
 using NUnit.Framework;
+using System.Data;
 
 namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
 {
@@ -174,7 +175,7 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
             Assert.That(c.Real, Is.GreaterThan(0));
         }
 
-            [Test]
+        [Test]
         public void CreateUnitaryMatrix()
         {
             Complex[] vector = new Complex[]
@@ -192,7 +193,7 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
             Assert.That(matrix.Rotations.Length, Is.EqualTo(vector.Length - 1));
 
             // apply transformations to original vector
-            for(var i = matrix.Rotations.Length-1; i >= 0; --i)
+            for (var i = matrix.Rotations.Length - 1; i >= 0; --i)
             {
                 var rotation = matrix.Rotations[i];
                 (copy[i], copy[i + 1]) = rotation * (copy[i], copy[i + 1]);
@@ -285,8 +286,8 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
             {
                 Assert.Multiple(() =>
                 {
-                    Assert.That(C[i-1, i].Real, Is.EqualTo(factorization.C.GetSuperdiagonal(i).Real).Within(1e-12));
-                    Assert.That(C[i-1, i].Imaginary, Is.EqualTo(factorization.C.GetSuperdiagonal(i).Imaginary).Within(1e-12));
+                    Assert.That(C[i - 1, i].Real, Is.EqualTo(factorization.C.GetSuperdiagonal(i).Real).Within(1e-12));
+                    Assert.That(C[i - 1, i].Imaginary, Is.EqualTo(factorization.C.GetSuperdiagonal(i).Imaginary).Within(1e-12));
                 });
             }
         }
@@ -499,13 +500,13 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
                 Assert.That(A22.Imaginary, Is.EqualTo(0).Within(1e-12));
             });
             (var A22_, var A23, var A32, var A33) = factorization.GetPart(2);
-                Assert.That(A22_.Magnitude, Is.EqualTo(0).Within(1e-12));
-                Assert.That(A23.Real, Is.EqualTo(-coefficients[2].Real).Within(1e-12));
-                Assert.That(A23.Imaginary, Is.EqualTo(-coefficients[2].Imaginary).Within(1e-12));
-                Assert.That(A32.Real, Is.EqualTo(1).Within(1e-12));
-                Assert.That(A32.Imaginary, Is.EqualTo(0).Within(1e-12));
-                Assert.That(A33.Real, Is.EqualTo(-coefficients[3].Real).Within(1e-12));
-                Assert.That(A33.Imaginary, Is.EqualTo(-coefficients[3].Imaginary).Within(1e-12));
+            Assert.That(A22_.Magnitude, Is.EqualTo(0).Within(1e-12));
+            Assert.That(A23.Real, Is.EqualTo(-coefficients[2].Real).Within(1e-12));
+            Assert.That(A23.Imaginary, Is.EqualTo(-coefficients[2].Imaginary).Within(1e-12));
+            Assert.That(A32.Real, Is.EqualTo(1).Within(1e-12));
+            Assert.That(A32.Imaginary, Is.EqualTo(0).Within(1e-12));
+            Assert.That(A33.Real, Is.EqualTo(-coefficients[3].Real).Within(1e-12));
+            Assert.That(A33.Imaginary, Is.EqualTo(-coefficients[3].Imaginary).Within(1e-12));
         }
 
         [Test]
@@ -564,9 +565,9 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
         {
             int n = coefficients.Length + 1;
             var factorization = AmvwFactorization.Create(coefficients);
-            
+
             var values = factorization.GetMatrix().Evd().EigenValues;
-            foreach(var root in values)
+            foreach (var root in values)
             {
                 Assert.That(roots.Select(x => (x - root).Magnitude).Min(), Is.LessThan(1e-2));
             }
@@ -590,26 +591,62 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
             Console.WriteLine(expectedMatrix);
             Console.WriteLine(actualMatrix);
 
-            Assert.That((expectedMatrix - actualMatrix).FrobeniusNorm, Is.LessThan(1e-12));
+            var actualEigenValues = actualMatrix.Evd().EigenValues;
+            var expectedEigenValues = expectedMatrix.Evd().EigenValues;
+
+            Assert.That((expectedMatrix - actualMatrix).FrobeniusNorm(), Is.LessThan(1e-12));
         }
 
-        [TestCase(0, 1)]
-        [TestCase(1, 1)]
-        public void Passthrough(int i, int expectedI)
+        [Test]
+        public void PassthroughFirstRow()
         {
-            var factorization = AmvwFactorization.Create(coefficients);
+            var factorization = AmvwFactorization.Create(new Complex[] { 1, 2, 3 });
             int n = coefficients.Length;
-            (var u1, _) = GivensRotation.Create(new Complex(1, 2), new Complex(3, 4));
-            var expectedMatrix = factorization.GetMatrix() * u1.GetMatrix(n+1, i);
-            (var transformation, var j) = factorization.Passthrough(i, u1);
 
-            Assert.That(j, Is.EqualTo(expectedI));
+            (var u1, _) = GivensRotation.Create(new Complex(1, 0), new Complex(3, 0));
+            var u1H = (GivensRotation)u1.Clone();
+            u1H.Invert();
+
+            var expectedMatrix = u1H.GetMatrix(n + 1, 0) * factorization.GetMatrix() * u1.GetMatrix(n + 1, 0);
+
+            (var f, var g) = factorization.Q.Rotations[0].Fusion(u1H);
+            factorization.D[0] *= f;
+            factorization.D[0 + 1] *= g;
+
+            (var transformation, var j) = factorization.Passthrough(0, u1);
+
+            Assert.That(j, Is.EqualTo(1));
 
             var actualMatrix = transformation.GetMatrix(n + 1, j) * factorization.GetMatrix();
+            Assert.That((expectedMatrix - actualMatrix).FrobeniusNorm(), Is.LessThan(1e-12));
+        }
 
+
+        [Test]
+        public void PassthroughFirstSecondRow()
+        {
+            var factorization = AmvwFactorization.Create(new Complex[] { 1, 2, 3 });
+            int n = coefficients.Length;
+
+            (var u1, _) = GivensRotation.Create(new Complex(1, 2), new Complex(3, 4));
+            var u1H = (GivensRotation)u1.Clone();
+            u1H.Invert();
+
+            var expectedMatrix = u1H.GetMatrix(n + 1, 0) * factorization.GetMatrix() * u1.GetMatrix(n + 1, 0);
+
+            (var f, var g) = factorization.Q.Rotations[0].Fusion(u1H);
+            factorization.D[0] *= f;
+            factorization.D[0 + 1] *= g;
+
+            (var transformation, var j) = factorization.Passthrough(0, u1);
+            Assert.That(j, Is.EqualTo(1));
+            (transformation, j) = factorization.Passthrough(j, transformation);
+            expectedMatrix = transformation.GetMatrix(n + 1, j).ConjugateTranspose() * expectedMatrix * transformation.GetMatrix(n + 1, j);
+            Assert.That(j, Is.EqualTo(1));
+
+            var actualMatrix = factorization.GetMatrix();
             Console.WriteLine(expectedMatrix);
             Console.WriteLine(actualMatrix);
-
             Assert.That((expectedMatrix - actualMatrix).FrobeniusNorm(), Is.LessThan(1e-12));
         }
 
@@ -647,7 +684,7 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
             var expectedMatrix = rotation1.GetMatrix(3, 0) * rotation2.GetMatrix(3, 1) * rotation3.GetMatrix(3, 0);
 
             (var rotation4, var rotation5, var rotation6) = GivensRotation.Turnover(rotation1, rotation2, rotation3);
-            
+
             var actualMatrix = rotation4.GetMatrix(3, 1) * rotation5.GetMatrix(3, 0) * rotation6.GetMatrix(3, 1);
 
             Assert.That((expectedMatrix - actualMatrix).FrobeniusNorm(), Is.LessThan(1e-12));
@@ -705,18 +742,81 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
             Assert.That((expectedMatrix - actualMatrix).FrobeniusNorm(), Is.LessThan(1e-12));
         }
 
-        [Test]
-        public void ApplyTransformation()
+        /// <summary>
+        /// Checks if the turnover operation is executed on the correct transformations of a unitary matrix
+        /// described by core transformations.
+        /// </summary>
+        [TestCase(0)]
+        [TestCase(1)]
+        [TestCase(2)]
+        [TestCase(3)]
+        public void ApplyTransformation(int i)
         {
-            var transformation = new GivensRotation(Complex.One, 0);
-            var factorization = AmvwFactorization.Create(coefficients);
-            var expectedMatrix = factorization.B.GetMatrix(5);
-            transformation = factorization.B.ApplyTransformation(transformation, 0);
-            var actualMatrix = transformation.GetMatrix(5, 1) * factorization.B.GetMatrix(5);
+            (var transformation, _) = GivensRotation.Create(new Complex(1, 2), new Complex(3, 4));
+            var B = UnitaryMatrix.Create(new Complex[]
+            {
+                new Complex(4, 5),
+                new Complex(9, -12),
+                new Complex(7, 3),
+                new Complex(2, -3),
+                new Complex(9, 12),
+                new Complex(-8, 7)
+            });
+            int n = B.Rotations.Length + 2;
+            var expectedMatrix = B.GetMatrix(n) * transformation.GetMatrix(n, i);
+
+            (transformation, var j) = B.ApplyTransformation(transformation, i);
+
+            // transformation should move down one row.
+            Assert.That(j, Is.EqualTo(i + 1));
+
+            var actualMatrix = transformation.GetMatrix(n, j) * B.GetMatrix(n);
 
             Console.WriteLine(expectedMatrix);
             Console.WriteLine(actualMatrix);
             Assert.That((expectedMatrix - actualMatrix).FrobeniusNorm(), Is.LessThan(1e-12));
+        }
+
+        /// <summary>
+        /// Checks if the turnover operation is executed on the correct complex conjugate 
+        /// transformations of a unitary matrix described by core transformations.
+        /// </summary>
+        [TestCase(1)]
+        [TestCase(2)]
+        [TestCase(3)]
+        [TestCase(4)]
+        public void ApplyTransformationComplexConjugate(int i)
+        {
+            (var transformation, _) = GivensRotation.Create(new Complex(1, -2), new Complex(-3, 4));
+            var B = UnitaryMatrix.Create(new Complex[]
+            {
+                new Complex(4, 5),
+                new Complex(9, -12),
+                new Complex(7, 3),
+                new Complex(2, -3),
+                new Complex(9, 12),
+                new Complex(-8, 7)
+            });
+            int n = B.Rotations.Length + 2;
+            var expectedMatrix = B.GetMatrix(n).ConjugateTranspose() * transformation.GetMatrix(n, i);
+
+            (transformation, var j) = B.ApplyTransformationConjugate(transformation, i);
+
+            // transformation should move down one row.
+            Assert.That(j, Is.EqualTo(i - 1));
+
+            var actualMatrix = transformation.GetMatrix(n, j) * B.GetMatrix(n).ConjugateTranspose();
+
+            Console.WriteLine(expectedMatrix);
+            Console.WriteLine(actualMatrix);
+            Assert.That((expectedMatrix - actualMatrix).FrobeniusNorm(), Is.LessThan(1e-12));
+        }
+
+        [Test]
+        public void ApplyTransformationShouldRaiseException()
+        {
+            var B = UnitaryMatrix.Create(coefficients);
+            Assert.Throws<ArgumentException>(() => B.ApplyTransformation(new GivensRotation(), coefficients.Length - 1));
         }
 
 
@@ -729,6 +829,7 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
             rotation2.Normalize();
             (var rotation3, _) = GivensRotation.Create(new Complex(1, 2), new Complex(3, 4));
 
+            // Executing turnover on rotation1', rotation2' and rotation3.
             rotation1.Invert();
             rotation2.Invert();
 
@@ -739,11 +840,11 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
             rotation5.Invert();
             rotation6.Invert();
 
-            var expectedMatrix = rotation4.GetMatrix(3, 0) * rotation5.GetMatrix(3, 1) * rotation6.GetMatrix(3, 0);
+            var expectedMatrix = rotation4.GetMatrix(3, 0) * rotation5.GetMatrix(3, 1).ConjugateTranspose() * rotation6.GetMatrix(3, 0).ConjugateTranspose();
 
             (rotation4, rotation5, rotation6) = GivensRotation.TurnoverComplexConjugate(rotation1, rotation2, rotation3);
 
-            var actualMatrix = rotation4.GetMatrix(3, 0) * rotation5.GetMatrix(3, 1) * rotation6.GetMatrix(3, 0);
+            var actualMatrix = rotation4.GetMatrix(3, 0) * rotation5.GetMatrix(3, 1).ConjugateTranspose() * rotation6.GetMatrix(3, 0).ConjugateTranspose();
             Console.WriteLine(expectedMatrix);
             Console.WriteLine(actualMatrix);
             Assert.That((expectedMatrix - actualMatrix).FrobeniusNorm(), Is.LessThan(1e-12));
@@ -763,14 +864,45 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
         }
 
         [Test]
+        public void Fusion2()
+        {
+            (var g1, _) = GivensRotation.Create(new Complex(1, -2), new Complex(3, -4));
+            (var g2, _) = GivensRotation.Create(new Complex(-5, 6), new Complex(-7, 8));
+
+            var expectedMatrix = g1.GetMatrix(2, 0) * g2.GetMatrix(2, 0);
+            (var d, var e) = g1.Fusion(g2);
+            var actualMatrix = g1.GetMatrix(2, 0) * Matrix<Complex>.Build.DiagonalOfDiagonalArray(new Complex[] { d, e });
+
+            Assert.That((expectedMatrix - actualMatrix).FrobeniusNorm(), Is.LessThan(1e-12));
+        }
+
+        [Test]
+        public void FusionOnUnitaryMatrix()
+        {
+            var factorization = AmvwFactorization.Create(coefficients);
+            var transformation = new GivensRotation(new Complex(-0.6518827942845281, -0.7094018643684572), -0.2679511473129994);
+            var expectedMatrix = factorization.Q.GetMatrix(4) * transformation.GetMatrix(4, 1);
+            (var d, var e) = factorization.Q.Rotations[1].Fusion(transformation);
+
+            var actualMatrix = factorization.Q.GetMatrix(4) * Matrix<Complex>.Build.SparseOfDiagonalArray(new Complex[]
+            {
+                1, d, e, 1
+            });
+
+            Assert.That((expectedMatrix - actualMatrix).FrobeniusNorm(), Is.LessThan(1e-12));
+        }
+
+        [Test]
         public void PassthroughDiagonalFromRight()
         {
-            var d = new Complex(0.447213595499958, -0.894427190999916);
-            var e = new Complex(-0.447213595499958, -0.894427190999916);
+            var d = new Complex(1, 2);
+            var e = new Complex(3, 4);
+            d /= d.Magnitude;
+            e /= e.Magnitude;
             (var rotation, _) = GivensRotation.Create(new Complex(5, 4), new Complex(3, 1));
             var expectedMatrix = Matrix<Complex>.Build.DiagonalOfDiagonalArray(new Complex[] { d, e }) * rotation.GetMatrix(2, 0);
 
-            (var passedRotation, var f, var g) = AmvwSolver.PassthroughDiagonalRight(d, e, rotation);
+            (var passedRotation, var f, var g) = GivensRotation.PassthroughRotationToLeft(d, e, rotation);
 
             // checking passedRotation * diag([f, g]) == diag([d, e]) * rotation
             var actualMatrix = passedRotation.GetMatrix(2, 0) * Matrix<Complex>.Build.DiagonalOfDiagonalArray(new Complex[] { f, g });
@@ -785,11 +917,70 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
             (var rotation, _) = GivensRotation.Create(new Complex(5, 4), new Complex(3, 1));
             var expectedMatrix = rotation.GetMatrix(2, 0) * Matrix<Complex>.Build.DiagonalOfDiagonalArray(new Complex[] { d, e });
 
-            (var passedRotation, var f, var g) = AmvwSolver.PassthroughDiagonalRight(d, e, rotation);
+            (var passedRotation, var f, var g) = GivensRotation.PassthroughRotationToLeft(d, e, rotation);
 
             // checking passedRotation * diag([f, g]) == diag([d, e]) * rotation
             var actualMatrix = Matrix<Complex>.Build.DiagonalOfDiagonalArray(new Complex[] { f, g }) * passedRotation.GetMatrix(2, 0);
             Assert.That((expectedMatrix - actualMatrix).FrobeniusNorm(), Is.LessThan(1e-12));
+        }
+
+        [Test]
+        public void PassthroughDiagonalFromLeftHermitian()
+        {
+            var d = new Complex(0.447213595499958, -0.894427190999916);
+            var e = new Complex(-0.447213595499958, -0.894427190999916);
+            (var rotation, _) = GivensRotation.Create(new Complex(5, 4), new Complex(3, 1));
+            var expectedMatrix = rotation.GetMatrix(2, 0).ConjugateTranspose() * Matrix<Complex>.Build.DiagonalOfDiagonalArray(new Complex[] { d, e });
+
+            (var passedRotation, var f, var g) = GivensRotation.PassthroughRotationToLeftHermitian(d, e, rotation);
+
+            var actualMatrix = Matrix<Complex>.Build.DiagonalOfDiagonalArray(new Complex[] { f, g }) * passedRotation.GetMatrix(2, 0).ConjugateTranspose();
+            Assert.That((expectedMatrix - actualMatrix).FrobeniusNorm(), Is.LessThan(1e-12));
+        }
+
+        [Test]
+        public void PassthroughDiagonal()
+        {
+            var diagonal = new Complex[] {
+                new Complex(0.447213595499958, -0.894427190999916),
+                new Complex(0.447213595499958, 0.894427190999916),
+                new Complex(0.599999877331049, -0.800000092001698),
+                new Complex(0.443015775381405, 0.896513816270119)
+            };
+            var coefficients = new Complex[] { new Complex(1, 2), new Complex(3, 4), new Complex(7, 9), new Complex(9, 1) };
+            int n = coefficients.Length;
+            var matrix = UnitaryMatrix.Create(coefficients);
+            var expectedProduct = matrix.GetMatrix(n) * Matrix<Complex>.Build.DiagonalOfDiagonalArray(diagonal);
+
+            var newDiagonal = matrix.PassthroughDiagonal(diagonal);
+            var actualProduct = Matrix<Complex>.Build.DiagonalOfDiagonalArray(newDiagonal) * matrix.GetMatrix(n);
+
+            Console.WriteLine(expectedProduct);
+            Console.WriteLine(actualProduct);
+            Assert.That((expectedProduct - actualProduct).FrobeniusNorm(), Is.LessThan(1e-12));
+        }
+
+
+        [Test]
+        public void PassthroughDiagonalHermitian()
+        {
+            var diagonal = new Complex[] {
+                new Complex(0.447213595499958, -0.894427190999916),
+                new Complex(0.447213595499958, 0.894427190999916),
+                new Complex(0.599999877331049, -0.800000092001698),
+                new Complex(0.443015775381405, 0.896513816270119)
+            };
+            var coefficients = new Complex[] { new Complex(1, 2), new Complex(3, 4), new Complex(7, 9), new Complex(9, 1) };
+            int n = coefficients.Length;
+            var matrix = UnitaryMatrix.Create(coefficients);
+            var expectedProduct = matrix.GetMatrix(n).ConjugateTranspose() * Matrix<Complex>.Build.DiagonalOfDiagonalArray(diagonal);
+
+            var newDiagonal = matrix.PassthroughDiagonalHermitian(diagonal);
+            var actualProduct = Matrix<Complex>.Build.DiagonalOfDiagonalArray(newDiagonal) * matrix.GetMatrix(n).ConjugateTranspose();
+
+            Console.WriteLine(expectedProduct);
+            Console.WriteLine(actualProduct);
+            Assert.That((expectedProduct - actualProduct).FrobeniusNorm(), Is.LessThan(1e-12));
         }
 
         [Test]
