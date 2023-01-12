@@ -425,14 +425,16 @@ namespace MathNet.Numerics.LinearAlgebra.Complex.Solvers
                 return (transformation, i);
             }
 
-            public Complex[] PassthroughDiagonal(Complex[] diagonal)
+            public Complex[] PassthroughDiagonal(Complex[] diagonal) => PassthroughDiagonal(diagonal, diagonal.Length - 2);
+
+            public Complex[] PassthroughDiagonal(Complex[] diagonal, int start)
             {
                 if (diagonal.Length != Rotations.Length + 1)
                 {
                     throw new ArgumentException(nameof(diagonal));
                 }
                 var n = diagonal.Length - 1;
-                for (int i = Rotations.Length - 1; i >= 0; --i)
+                for (int i = start; i >= 0; --i)
                 {
                     // Rotation is active on rows i and i+1.
                     (Rotations[i], diagonal[i], diagonal[i + 1]) = GivensRotation.PassthroughRotationToLeft(diagonal[i], diagonal[i + 1], Rotations[i]);
@@ -483,7 +485,7 @@ namespace MathNet.Numerics.LinearAlgebra.Complex.Solvers
 
             public int n { get; set; }
 
-            public double y { get; set; }
+            public Complex y { get; set; }
 
             private AmvwFactorization() { }
 
@@ -509,21 +511,9 @@ namespace MathNet.Numerics.LinearAlgebra.Complex.Solvers
                 D[n] = Complex.One;
 
                 Complex[] x = CreateVectorX(coefficients);
-
-                // Factoring out the complex part of the coefficient x[n-1],
-                // such that the last two entries of x are real.
-                // This makes applying Z_n easier.
-                var lastCoefficientMagnitude = x[n - 1].Magnitude;
-                var lastCoefficientPhase = x[n - 1] / lastCoefficientMagnitude;
-                x[n - 1] = lastCoefficientMagnitude;
-                D[n - 1] *= lastCoefficientPhase;
-                //x[n] *= -1;
-
                 // B_i = C_i for i=1,.., n-1
                 var C = UnitaryMatrix.Create(x);
-                //(C.Rotations[n - 1], D[n - 2], D[n - 1]) = PassthroughDiagonalLeft(lastCoefficientPhase, 1, C.Rotations[n - 1]);
-
-                var yNorm = x[0].Real;
+                Complex yNorm = x[0].Real;
 
                 var B = new UnitaryMatrix(C.Rotations.
                     Select(x => new GivensRotation(x.Cosine, x.Sine)).ToArray());
@@ -534,24 +524,12 @@ namespace MathNet.Numerics.LinearAlgebra.Complex.Solvers
                 // factor for row one: c/(cosineNorm) = phase.
                 // factor for row two: -c'/cosineNorm = -phase'.
 
-                //(var d, var e, var rotation) = GivensRotation.GetReflectedRotation(B.Rotations[n - 1]);
+                (D[n-1], D[n], B.Rotations[n - 1]) = GivensRotation.GetReflectedRotation(B.Rotations[n - 1]);
 
-                if (B.Rotations[n - 1].Cosine.Imaginary.Magnitude() > 1e-12)
-                {
-                    throw new Exception();
-                    //B.Rotations[n - 1] = rotation;
-                    // we need to pass the diagonal matrix (d,e) through C.
-                    // First through the last core transformation.
-                    //(C.Rotations[n - 1], D[n - 1], D[n]) = PassthroughDiagonalLeft(d, e, C.Rotations[n - 1]);
-                }
+                D = B.PassthroughDiagonal(D, n-2);
+                yNorm /= D[0];
+                D = C.PassthroughDiagonalHermitian(D);
 
-                B.Rotations[n - 1] = new GivensRotation(-B.Rotations[n - 1].Sine, -B.Rotations[n - 1].Cosine.Real);
-                // correcting the sign which we have due to the reflection of B_{n}.
-
-                (C.Rotations[n - 1], var d, var e) = GivensRotation.PassthroughRotationToRight(1, -1, C.Rotations[n - 1]);
-                D[n - 1] *= d;
-                D[n] *= e;
-                //D[n] *= -1;
 
                 // correct negative sign which is introduced from Q_1,..,Q_{n-1}.
                 D[n] *= n % 2 == 0 ? 1 : -1;

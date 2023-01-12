@@ -531,42 +531,12 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
 
 
         [Test]
-        public void CreateFactorizationCheckBn()
-        {
-            var factorization = AmvwFactorization.Create(new Complex[]
-            {
-                -3*Complex.One,
-                new Complex(1,2),
-            });
-            int n = factorization.n;
-            var Cn = factorization.C.Rotations.Last();
-            var Bn = factorization.B.Rotations.Last();
-
-            var Zn = Matrix<Complex>.Build.Dense(2, 2, 0);
-            Zn[0, 1] = 1;
-            Zn[1, 0] = 1;
-
-            var expectedMatrix = Cn.GetMatrix(2, 0) * Zn;
-            var diagonal = Matrix<Complex>.Build.DiagonalOfDiagonalArray(new Complex[] { factorization.D[n - 1], factorization.D[n] });
-            var actualMatrix = diagonal * Bn.GetMatrix(2, 0);
-
-            Console.WriteLine(expectedMatrix);
-            Console.WriteLine(actualMatrix);
-
-            Assert.That((expectedMatrix - actualMatrix).FrobeniusNorm(), Is.LessThan(1e-12));
-            Assert.That(Cn.Cosine.Imaginary, Is.LessThan(1e-12));
-            Assert.That(-Cn.Cosine.Real, Is.EqualTo(Bn.Sine));
-            Assert.That(-Cn.Sine, Is.EqualTo(Bn.Cosine.Real));
-            Assert.That(factorization.D.Last().Real, Is.EqualTo(-1));
-        }
-
-        [Test]
         public void CreateFactorizationCheckRoots()
         {
-            int n = coefficients.Length + 1;
+            int n = coefficients.Length;
             var factorization = AmvwFactorization.Create(coefficients);
-
-            var values = factorization.GetMatrix().Evd().EigenValues;
+            Console.WriteLine(factorization.GetMatrix().SubMatrix(0, n, 0, n));
+            var values = factorization.GetMatrix().SubMatrix(0, n, 0, n).Evd().EigenValues;
             foreach (var root in values)
             {
                 Assert.That(roots.Select(x => (x - root).Magnitude).Min(), Is.LessThan(1e-2));
@@ -988,6 +958,16 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
         {
             // (x - (1+ 2i))(x - (1- 2i))(x - 5) = -25 + 15 x - 7 x^2 + x^3
             var coefficients = new Complex[] { -25, 15, -7 }; // leading coeffient is not provided.
+
+            AmvwSolver.Solve(coefficients);
+        }
+
+
+        [Test]
+        public void Solve2()
+        {
+            // (x-5)*(x-10)*(x-15)
+            var coefficients = new Complex[] { -750, 275, -30 }; // leading coeffient is not provided.
 
             AmvwSolver.Solve(coefficients);
         }
