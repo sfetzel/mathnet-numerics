@@ -36,6 +36,7 @@ using MathNet.Numerics.Providers.LinearAlgebra;
 using MathNet.Numerics;
 using NUnit.Framework;
 using System.Data;
+using System.Collections.Immutable;
 
 namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
 {
@@ -51,14 +52,14 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
         // f(x) = (1+2j) + (3+4j)*x + (5+6j)*x^2 + x^3
         // f(x) = (x - (-4.3533-5.9811i))*(x-(-0.37265+0.43338i))*(x-(-0.27401-0.45232i))
         // n = 3.
-        public static Complex[] coefficients = new Complex[]
+        public Complex[] GetTestCoefficients() => new Complex[]
         {
             new Complex(1, 2),
             new Complex(3, 4),
             new Complex(5, 6)
         };
 
-        public static Complex[] roots = new Complex[]
+        public Complex[] GetTestSolution() => new Complex[]
         {
             new Complex(-4.353335455010091, -5.981059347778331),
             new Complex(-0.372651320121572, 0.433379276936973),
@@ -211,7 +212,7 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
         [Test]
         public void CreateFactorizationTestQ()
         {
-            var factorization = AmvwFactorization.Create(coefficients);
+            var factorization = AmvwFactorization.Create(GetTestCoefficients());
             var matrix = factorization.Q.GetMatrix(4);
             Console.WriteLine(matrix);
             Assert.Multiple(() =>
@@ -238,6 +239,7 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
         [Test]
         public void CreateFactorizationTestC()
         {
+            var coefficients = GetTestCoefficients();
             var factorization = AmvwFactorization.Create(coefficients);
             int n = coefficients.Length - 1;
             var x = Vector<Complex>.Build.DenseOfArray(AmvwFactorization.CreateVectorX(coefficients));
@@ -260,6 +262,7 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
         [Test]
         public void GetDiagonal()
         {
+            var coefficients = GetTestCoefficients();
             var factorization = AmvwFactorization.Create(coefficients);
             var C = factorization.C.GetMatrix(4);
             Console.WriteLine(C);
@@ -277,6 +280,7 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
         [Test]
         public void GetSuperDiagonal()
         {
+            var coefficients = GetTestCoefficients();
             var factorization = AmvwFactorization.Create(coefficients);
             var C = factorization.C.GetMatrix(5);
             Console.WriteLine(C);
@@ -328,6 +332,7 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
         [Test]
         public void CreateFactorizationTestB()
         {
+            var coefficients = GetTestCoefficients();
             var factorization = AmvwFactorization.Create(coefficients);
 
             Assert.That(factorization.B.Rotations[0].Cosine.Real, Is.EqualTo(0.512877644532173).Within(1e-12));
@@ -346,6 +351,7 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
         [Test]
         public void GetTopLeftR()
         {
+            var coefficients = GetTestCoefficients();
             var factorization = AmvwFactorization.Create(coefficients);
             (var a, var b, var c, var d) = factorization.GetTopLeftR();
             Assert.Multiple(() =>
@@ -360,6 +366,7 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
         [Test]
         public void GetRBlock()
         {
+            var coefficients = GetTestCoefficients();
             var factorization = AmvwFactorization.Create(coefficients);
             (Complex R00, Complex R01, Complex R10, Complex R11, Complex R20, Complex R21) = factorization.GetRBlock(1);
 
@@ -380,6 +387,7 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
         [Test]
         public void CreateFactorizationTestD()
         {
+            var coefficients = GetTestCoefficients();
             var factorization = AmvwFactorization.Create(coefficients);
             Assert.Multiple(() =>
             {
@@ -403,6 +411,7 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
             // [0   0   -1-2j;
             //  1   0   -3-4j;
             //  0   1   -5-6j]
+            var coefficients = GetTestCoefficients();
             var factorization = AmvwFactorization.Create(coefficients);
 
             var xNorm = Math.Sqrt(1 + 2 * 2 + 3 * 3 + 4 * 4 + 5 * 5 * 6 * 6);
@@ -452,14 +461,14 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
             //  1   0   0 -3-4j;
             //  0   1   0 -5-6j;
             //  0   0   1 -7-8j]
-            var coefficients = new Complex[]
+            var testCoefficients = new Complex[]
             {
                 new Complex(1, 2),
                 new Complex(3, 4),
                 new Complex(5, 6),
                 new Complex(7, 8)
             };
-            var factorization = AmvwFactorization.Create(coefficients);
+            var factorization = AmvwFactorization.Create(testCoefficients);
 
             // The factorization should be equal to the companion matrix.
             (var A00, var A01, var A10, var A11) = factorization.GetTopLeft();
@@ -484,12 +493,12 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
             });
             (var A22_, var A23, var A32, var A33) = factorization.GetPart(2);
             Assert.That(A22_.Magnitude, Is.EqualTo(0).Within(1e-12));
-            Assert.That(A23.Real, Is.EqualTo(-coefficients[2].Real).Within(1e-12));
-            Assert.That(A23.Imaginary, Is.EqualTo(-coefficients[2].Imaginary).Within(1e-12));
+            Assert.That(A23.Real, Is.EqualTo(-testCoefficients[2].Real).Within(1e-12));
+            Assert.That(A23.Imaginary, Is.EqualTo(-testCoefficients[2].Imaginary).Within(1e-12));
             Assert.That(A32.Real, Is.EqualTo(1).Within(1e-12));
             Assert.That(A32.Imaginary, Is.EqualTo(0).Within(1e-12));
-            Assert.That(A33.Real, Is.EqualTo(-coefficients[3].Real).Within(1e-12));
-            Assert.That(A33.Imaginary, Is.EqualTo(-coefficients[3].Imaginary).Within(1e-12));
+            Assert.That(A33.Real, Is.EqualTo(-testCoefficients[3].Real).Within(1e-12));
+            Assert.That(A33.Imaginary, Is.EqualTo(-testCoefficients[3].Imaginary).Within(1e-12));
         }
 
         [Test]
@@ -500,15 +509,15 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
             //  1   0   0 -3-4j;
             //  0   1   0 -5-6j;
             //  0   0   1 -7-8j]
-            var coefficients = new Complex[]
+            var testCoefficients = new Complex[]
             {
                 new Complex(1, 2),
                 new Complex(3, 4),
                 new Complex(5, 6),
                 new Complex(6, 7)
             };
-            int n = coefficients.Length + 1;
-            var factorization = AmvwFactorization.Create(coefficients);
+            int n = testCoefficients.Length + 1;
+            var factorization = AmvwFactorization.Create(testCoefficients);
             Console.WriteLine(factorization.GetMatrix());
         }
 
@@ -519,14 +528,14 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
             // [0   0   0 -1-2j;
             //  1   0   0 -3-4j;
             //  0   1   0 -5-6j;]
-            var coefficients = new Complex[]
+            var testCoefficients = new Complex[]
             {
                 new Complex(1, 2),
                 new Complex(3, 4),
                 new Complex(5, 6),
             };
-            int n = coefficients.Length + 1;
-            var factorization = AmvwFactorization.Create(coefficients);
+            int n = testCoefficients.Length + 1;
+            var factorization = AmvwFactorization.Create(testCoefficients);
             Console.WriteLine(factorization.GetMatrix());
         }
 
@@ -534,45 +543,48 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
         [Test]
         public void CreateFactorizationCheckRoots()
         {
+            var coefficients = GetTestCoefficients();
             int n = coefficients.Length;
             var factorization = AmvwFactorization.Create(coefficients);
-            Console.WriteLine(factorization.GetMatrix().SubMatrix(0, n, 0, n));
-            var values = factorization.GetMatrix().SubMatrix(0, n, 0, n).Evd().EigenValues;
-            foreach (var root in values)
-            {
-                Assert.That(roots.Select(x => (x - root).Magnitude).Min(), Is.LessThan(1e-2));
-            }
+
+            var expectedRoots = GetTestSolution().Append(Complex.Zero);
+            var actualRoots = factorization.GetMatrix().Evd().EigenValues;
+            AssertEqualityWithTolerance(expectedRoots, actualRoots, 12);
         }
+        private HashSet<Complex> GetRoundedSet(IEnumerable<Complex> set, int digits)
+            => set.OrderBy(x => x.MagnitudeSquared()).ThenBy(x => x.Real).ThenBy(x => x.Imaginary)
+                .Select(x => new Complex(x.Real.Round(digits), x.Imaginary.Round(digits))).ToHashSet();
+
+        private void AssertEqualityWithTolerance(IEnumerable<Complex> expectedSet, IEnumerable<Complex> actualSet, int digits)
+            => Assert.That(GetRoundedSet(expectedSet, digits), Is.EquivalentTo(GetRoundedSet(actualSet, digits)));
+
 
         [Test]
-        public void ApplyFrancisStepIdentity()
+        public void ApplyFrancisStepIdentityCheckSimilarity()
         {
-            var coefficients = new Complex[]
-            {
-                new Complex(1, 2),
-                new Complex(3, 4),
-                new Complex(5, 6)
-            };
-            // A is a 3x3 matrix.
+            var coefficients = GetTestCoefficients();
             var factorization = AmvwFactorization.Create(coefficients);
             int n = coefficients.Length + 1;
             var expectedMatrix = factorization.GetMatrix();
-            var u1 = new GivensRotation(0, -1);
+            var u1 = new GivensRotation(1, 0);
             AmvwSolver.ApplyFrancisStep(u1, factorization);
-            var actualMatrix = factorization.GetMatrix();
-            Console.WriteLine(expectedMatrix);
-            Console.WriteLine(actualMatrix);
 
+            // The process does not keep track of y, but on this example, y will be multiplied with -1.
+            factorization.y *= -1;
+            var actualMatrix = factorization.GetMatrix();
+
+            // Check similarity
             var actualEigenValues = actualMatrix.Evd().EigenValues;
             var expectedEigenValues = expectedMatrix.Evd().EigenValues;
 
-            Assert.That((expectedMatrix - actualMatrix).FrobeniusNorm(), Is.LessThan(1e-12));
+            AssertEqualityWithTolerance(expectedEigenValues, actualEigenValues, 12);
         }
 
 
         [Test]
         public void ApplyTransformationLeftOnFactorization()
         {
+            var coefficients = GetTestCoefficients();
             var factorization = AmvwFactorization.Create(coefficients);
             int n = coefficients.Length;
             (var u1, _) = GivensRotation.Create(new Complex(1, 2), new Complex(3, 4));
@@ -614,6 +626,7 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
         [Test]
         public void PassthroughFirstRowCheckSimilarity()
         {
+            var coefficients = GetTestCoefficients();
             var factorization = AmvwFactorization.Create(coefficients);
             var originalMatrix = factorization.GetMatrix();
             Console.WriteLine(originalMatrix);
@@ -631,69 +644,29 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
             // C = u2 * factorization = u1H * A * u1
             // u2^H * C * u2 = factorization * u2.
 
-            var actualMatrix = u2.GetMatrix(n+1, j) * factorization.GetMatrix();
+            var actualMatrix = u2.GetMatrix(n + 1, j) * factorization.GetMatrix();
             var actualEigenValues = actualMatrix.Evd().EigenValues;
 
             Console.WriteLine(originalEigenValues);
             Console.WriteLine(actualEigenValues);
 
-        }
-
-        [Test]
-        public void PassthroughFirstSecondRow()
-        {
-            var factorization = AmvwFactorization.Create(coefficients);
-            var originalMatrix = factorization.GetMatrix();
-            int n = coefficients.Length;
-
-            (var u1, _) = GivensRotation.Create(new Complex(1, 2), new Complex(3, 4));
-            u1.Normalize();
-            var u1H = (GivensRotation)u1.Clone();
-            u1H.Invert();
-
-            factorization.ApplyTransformationLeft(u1H);
-
-            (var u2, var j) = factorization.Passthrough(0, u1);
-            // C = u2 * factorization = u1H * A * u1
-            // u2^H * C * u2 = factorization * u2.
-
-            var expectedMatrix = factorization.GetMatrix() * u2.GetMatrix(n + 1, 1);
-            var originalEigenValues = expectedMatrix.Evd().EigenValues;
-
-            Assert.That(j, Is.EqualTo(1));
-            (u2, j) = factorization.Passthrough(j, u2);
-
-            Assert.That(u2.Cosine, Is.EqualTo(Complex.One));
-            Assert.That(u2.Sine, Is.EqualTo(0));
-            Assert.That(j, Is.EqualTo(1));
-
-            factorization.y *= 1;
-
-            var actualMatrix = factorization.GetMatrix();
-            var actualEigenValues = actualMatrix.Evd().EigenValues;
-
-            Console.WriteLine(originalEigenValues);
-            Console.WriteLine(actualEigenValues);
-
-            Console.WriteLine(expectedMatrix);
-            Console.WriteLine(actualMatrix);
-            Assert.That((expectedMatrix - actualMatrix).FrobeniusNorm(), Is.LessThan(1e-12));
         }
 
         [Test]
         public void PassthroughSecondRow()
         {
+            var coefficients = GetTestCoefficients();
             var factorization = AmvwFactorization.Create(coefficients);
             int n = coefficients.Length;
 
             (var u2, _) = GivensRotation.Create(new Complex(1, 2), new Complex(3, 4));
 
             // only considering the part Q*D*C'*B because the transformation is not applied to y.
-            var expectedMatrix = factorization.Q.GetMatrix(n + 1) * 
+            var expectedMatrix = factorization.Q.GetMatrix(n + 1) *
                 Matrix<Complex>.Build.DiagonalOfDiagonalArray(factorization.D) *
                 factorization.C.GetMatrix(n + 1).ConjugateTranspose() *
                 factorization.B.GetMatrix(n + 1) * u2.GetMatrix(n + 1, 1);
-            
+
             (u2, var j) = factorization.Passthrough(1, u2);
 
             Assert.That(j, Is.EqualTo(1));
@@ -710,6 +683,7 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
         [Test]
         public void AbsorbTransformationInQ()
         {
+            var coefficients = GetTestCoefficients();
             var factorization = AmvwFactorization.Create(coefficients);
             int n = coefficients.Length;
 
@@ -739,6 +713,7 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
         [TestCase(2)]
         public void AbsorbTransformationInQShouldThrowException(int i)
         {
+            var coefficients = GetTestCoefficients();
             var factorization = AmvwFactorization.Create(coefficients);
             int n = coefficients.Length;
 
@@ -750,20 +725,20 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
         [Test]
         public void CreateVectorX()
         {
-            var coefficients = new Complex[]
+            var testCoefficients = new Complex[]
             {
                 new Complex(1, 2),
                 new Complex(3, 4),
                 new Complex(5, 6),
                 new Complex(7, 8)
             };
-            var x = AmvwFactorization.CreateVectorX(coefficients);
+            var x = AmvwFactorization.CreateVectorX(testCoefficients);
             Assert.Multiple(() =>
             {
-                Assert.That(x[0], Is.EqualTo(-coefficients[1]));
-                Assert.That(x[1], Is.EqualTo(-coefficients[2]));
-                Assert.That(x[2], Is.EqualTo(-coefficients[3]));
-                Assert.That(x[3], Is.EqualTo(-coefficients[0]));
+                Assert.That(x[0], Is.EqualTo(-testCoefficients[1]));
+                Assert.That(x[1], Is.EqualTo(-testCoefficients[2]));
+                Assert.That(x[2], Is.EqualTo(-testCoefficients[3]));
+                Assert.That(x[3], Is.EqualTo(-testCoefficients[0]));
                 Assert.That(x[4], Is.EqualTo(-Complex.One));
             });
         }
@@ -806,6 +781,7 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
         [Test]
         public void TurnoverIdentity2()
         {
+            var coefficients = GetTestCoefficients();
             var factorization = AmvwFactorization.Create(coefficients);
             var rotation1 = factorization.B.Rotations[0];
             rotation1.Normalize();
@@ -913,9 +889,9 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
         [Test]
         public void ApplyTransformationShouldRaiseException()
         {
-            var testCoefficients = (Complex[])coefficients.Clone();
-            var B = UnitaryMatrix.Create(testCoefficients);
-            Assert.Throws<ArgumentException>(() => B.ApplyTransformationRight(new GivensRotation(), testCoefficients.Length - 1));
+            var coefficients = GetTestCoefficients();
+            var B = UnitaryMatrix.Create(coefficients);
+            Assert.Throws<ArgumentException>(() => B.ApplyTransformationRight(new GivensRotation(), coefficients.Length - 1));
         }
 
 
@@ -1001,6 +977,7 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
         //[TestCase(1)] would require a turnover.
         public void ApplyTransformationLeft(int i)
         {
+            var coefficients = GetTestCoefficients();
             (var u1, _) = GivensRotation.Create(new Complex(1, 2), new Complex(1, 4));
             var matrix = UnitaryMatrix.Create(coefficients);
             var n = coefficients.Length;
@@ -1045,6 +1022,7 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
         [Test]
         public void FusionOnUnitaryMatrix()
         {
+            var coefficients = GetTestCoefficients();
             var factorization = AmvwFactorization.Create(coefficients);
             var transformation = new GivensRotation(new Complex(-0.6518827942845281, -0.7094018643684572), -0.2679511473129994);
             var expectedMatrix = factorization.Q.GetMatrix(4) * transformation.GetMatrix(4, 1);
@@ -1113,9 +1091,9 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
                 new Complex(0.894427190999916, 0.447213595499958),
                 new Complex(-0.6, 0.8)
             };
-            var coefficients = new Complex[] { new Complex(1, 2), new Complex(3, 4), new Complex(7, 9), new Complex(9, 1) };
-            int n = coefficients.Length;
-            var matrix = UnitaryMatrix.Create(coefficients);
+            var testCoefficients = new Complex[] { new Complex(1, 2), new Complex(3, 4), new Complex(7, 9), new Complex(9, 1) };
+            int n = testCoefficients.Length;
+            var matrix = UnitaryMatrix.Create(testCoefficients);
             var expectedProduct = matrix.GetMatrix(n) * Matrix<Complex>.Build.DiagonalOfDiagonalArray(diagonal);
 
             var newDiagonal = matrix.PassthroughDiagonalToLeft(diagonal);
@@ -1136,9 +1114,9 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
                 new Complex(0.599999877331049, -0.800000092001698),
                 new Complex(0.443015775381405, 0.896513816270119)
             };
-            var coefficients = new Complex[] { new Complex(1, 2), new Complex(3, 4), new Complex(7, 9), new Complex(9, 1) };
-            int n = coefficients.Length;
-            var matrix = UnitaryMatrix.Create(coefficients);
+            var testCoefficients = new Complex[] { new Complex(1, 2), new Complex(3, 4), new Complex(7, 9), new Complex(9, 1) };
+            int n = testCoefficients.Length;
+            var matrix = UnitaryMatrix.Create(testCoefficients);
             var expectedProduct = Matrix<Complex>.Build.DiagonalOfDiagonalArray(diagonal) * matrix.GetMatrix(n);
 
             var newDiagonal = matrix.PassthroughDiagonalToRight(diagonal, 0);
@@ -1159,9 +1137,9 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
                 new Complex(0.599999877331049, -0.800000092001698),
                 new Complex(0.443015775381405, 0.896513816270119)
             };
-            var coefficients = new Complex[] { new Complex(1, 2), new Complex(3, 4), new Complex(7, 9), new Complex(9, 1) };
-            int n = coefficients.Length;
-            var matrix = UnitaryMatrix.Create(coefficients);
+            var testCoefficients = new Complex[] { new Complex(1, 2), new Complex(3, 4), new Complex(7, 9), new Complex(9, 1) };
+            int n = testCoefficients.Length;
+            var matrix = UnitaryMatrix.Create(testCoefficients);
             var expectedProduct = matrix.GetMatrix(n).ConjugateTranspose() * Matrix<Complex>.Build.DiagonalOfDiagonalArray(diagonal);
 
             var newDiagonal = matrix.PassthroughDiagonalHermitian(diagonal);
@@ -1177,7 +1155,15 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
         {
             //  (x-(-0.30943739075793514-0.32612809004821913i))*(x-(6.492558672480413+5.884045065878663i))*(x-(0.5133928537802421 -0.24218214463096321i))
             // == x^3 - (6.696514135502720 + 5.315734831199481 i) x^2 + (4.43031049711782 - 2.58219602689529 i) x + (1.000000000000002 + 2.000000000000002 i)
-            AmvwSolver.Solve(coefficients);
+            var coefficients = GetTestCoefficients();
+            var expectedRoots = new Complex[]
+            {
+                new Complex(-0.30943739075793514, -0.32612809004821913),
+                new Complex(6.492558672480413, 5.884045065878663),
+                new Complex(0.5133928537802421, -0.24218214463096321)
+            };
+            var actualRoots = AmvwSolver.Solve(coefficients);
+            AssertEqualityWithTolerance(expectedRoots, actualRoots, 2);
         }
 
 
@@ -1185,9 +1171,11 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
         public void Solve()
         {
             // (x - (1+ 2i))(x - (1- 2i))(x - 5) = -25 + 15 x - 7 x^2 + x^3
-            var coefficients = new Complex[] { -25, 15, -7 }; // leading coeffient is not provided.
+            var testCoefficients = new Complex[] { -25, 15, -7 }; // leading coeffient is not provided.
+            var expectedRoots = new Complex[] { 5, new Complex(1, 2), new Complex(1, -2) };
+            var actualRoots = AmvwSolver.Solve(testCoefficients);
 
-            AmvwSolver.Solve(coefficients);
+            AssertEqualityWithTolerance(expectedRoots, actualRoots, 8);
         }
 
 
@@ -1195,57 +1183,11 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
         public void Solve2()
         {
             // (x-5)*(x-10)*(x-15)
-            var coefficients = new Complex[] { -750, 275, -30 }; // leading coeffient is not provided.
+            var testCoefficients = new Complex[] { -750, 275, -30 }; // leading coeffient is not provided.
+            var expectedRoots = new Complex[] { 5, 10, 15 };
 
-            AmvwSolver.Solve(coefficients);
-        }
-
-        [Test]
-        public void SolveFactorized()
-        {
-
-            // a = [1+2j, 3+4j, 5+6j]
-            var B = new UnitaryMatrix(new GivensRotation[]
-            {
-                new GivensRotation(new Complex(-0.31277162108561218, 0.41702882811414954), -0.85338201853871842),
-                new GivensRotation(new Complex(-0.61084722178152606, 0.73301666613783134), -0.29925280083228989),
-                new GivensRotation(new Complex(-0.18257418583505539, 0.36514837167011077), 0.91287092917527701)
-            });
-
-            var C = new UnitaryMatrix(new GivensRotation[]
-            {
-                new GivensRotation(new Complex(-0.31277162108561218, 0.41702882811414954), -0.85338201853871842),
-                new GivensRotation(new Complex(-0.61084722178152606, 0.73301666613783134), -0.29925280083228989),
-                new GivensRotation(new Complex(-0.40824829046386307, 0.81649658092772615), -0.40824829046386307)
-            });
-
-            var D = new Complex[]
-            {
-                Complex.One,
-                new Complex(0.44721359549995793, 0.89442719099991586),
-                Complex.One,
-                new Complex(0.44721359549995793, -0.89442719099991586)
-            };
-
-            var Q = new UnitaryMatrix(new GivensRotation[]
-            {
-                new GivensRotation(new Complex(0, 0), 1),
-                new GivensRotation(new Complex(0, 0), 1),
-                new GivensRotation(new Complex(1, 0), 0),
-            });
-
-            var factorization = new AmvwFactorization()
-            {
-                Q = Q,
-                B = B,
-                C = C,
-                D = D,
-                n = 3,
-                y = -9.591663046625440
-            };
-
-            AmvwSolver.Solve(factorization);
-
+            var actualRoots = AmvwSolver.Solve(testCoefficients);
+            AssertEqualityWithTolerance(expectedRoots, actualRoots, 6);
         }
     }
 }

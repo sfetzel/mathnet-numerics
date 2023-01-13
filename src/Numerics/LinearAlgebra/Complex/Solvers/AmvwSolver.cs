@@ -627,6 +627,25 @@ namespace MathNet.Numerics.LinearAlgebra.Complex.Solvers
                 return x;
             }
 
+            public Complex GetBestWilkinsonShift()
+            {
+                (var Aul, var Aur, var All, var Alr) = GetPart(n - 2);
+                (var shift1, var shift2) = AmvwSolver.GetWilkinsonShift(Aul, Aur, All, Alr);
+                // select the shift which is nearer to the bottom right entry of A.
+                var shift = (shift1 - Alr).MagnitudeSquared() < (shift2 - Alr).MagnitudeSquared() ? shift1 : shift2;
+                return shift;
+            }
+
+            public GivensRotation GetFirstTransformation(int n) => GetFirstTransformation(n, GetBestWilkinsonShift());
+
+            public GivensRotation GetFirstTransformation(int n, Complex shift)
+            {
+                (var A11, _, var A21, _) = GetTopLeft();
+
+                (var u1, _) = GivensRotation.Create(A11 - shift, A21);
+                return u1;
+            }
+
             /// <summary>
             /// Gets the entry R_{i,i} of the R matrix (A=Q*R).
             /// Using equation 4.12 of [1]: h_{i+1, i}/c_{i+1, i}.
@@ -875,15 +894,13 @@ namespace MathNet.Numerics.LinearAlgebra.Complex.Solvers
         public static void ApplyFrancisStep(GivensRotation u1, AmvwFactorization factorization)
         {
             var n = factorization.n;
-            var u1H = (GivensRotation)u1.Clone();
-            u1H.Invert();
 
             // fuse u1 with the first Q core transformation.
             //(var d, var e) = u1H.Fusion(factorization.Q.Rotations[0]);
             //factorization.D[0] *= d;
             //factorization.D[1] *= e;
             //factorization.Q.Rotations[0] = u1H;
-            factorization.ApplyTransformationLeft(u1H);
+            factorization.ApplyTransformationLeft(u1.CloneInverse());
 
             var transformation = u1;
             // i is equal to the active rows (i,i+1) the current rotation works on.
@@ -909,45 +926,34 @@ namespace MathNet.Numerics.LinearAlgebra.Complex.Solvers
         public static List<Complex> Solve(AmvwFactorization factorization)
         {
             var n = factorization.n;
-            Complex Aul; Complex Aur; Complex All; Complex Alr;
+            var roots = new List<Complex>();
 
             for (int j = 0; j < 200; ++j)
             {
-                (var A11, var A12, var A21, var A22) = factorization.GetTopLeft();
-                (Aul, Aur, All, Alr) = factorization.GetPart(n - 2);
-
-                (var shift1, var shift2) = GetWilkinsonShift(Aul, Aur, All, Alr);
-
-                var shift = (shift1 - Alr).MagnitudeSquared() < (shift2 - Alr).MagnitudeSquared() ? shift1 : shift2;
-                //var shift = 0;
-                Console.WriteLine("Using shift: {0}", shift1);
-                Console.WriteLine(Alr);
-
-                (var u1, _) = GivensRotation.Create(A11 - shift, A21);
-                if(u1.Sine < 1e-8 && u1.Sine > -1e-8)
+                
+                if (factorization.Q.Rotations[n - 2].Sine < 1e-8)
                 {
-                    Console.WriteLine("------------------");
-                    Console.WriteLine("------------------");
-                    Console.WriteLine("------------------");
+                    (_, _, _, var Alr) = factorization.GetPart(n - 2);
+                    roots.Add(Alr);
                     n -= 1;
 
                     if(n <= 2)
                     {
-                        (A11, A12, A21, A22) = factorization.GetTopLeft();
-                        Console.WriteLine(GetWilkinsonShift(A11, A12, A21, A22));
+                        (var A11, var A12, var A21, var A22) = factorization.GetTopLeft();
+                        (var root1, var root2) = GetWilkinsonShift(A11, A12, A21, A22);
+                        roots.Add(root1);
+                        roots.Add(root2);
                         break;
                     }
                 }
-                u1.Invert();
-                Console.WriteLine($"sin: {u1.Sine}");
+                var u1 = factorization.GetFirstTransformation(n);
+                Console.WriteLine($"sin: {factorization.Q.Rotations[n - 2].Sine}");
                 ApplyFrancisStep(u1, factorization);
 
             }
 
-            Console.WriteLine(factorization.GetMatrix());
 
-
-            return null;
+            return roots;
         }
     }
 }
