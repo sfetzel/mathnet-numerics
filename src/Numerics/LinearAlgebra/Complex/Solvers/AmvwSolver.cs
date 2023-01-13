@@ -148,7 +148,9 @@ namespace MathNet.Numerics.LinearAlgebra.Complex.Solvers
             {
                 var s2 = rotation.Sine;
                 var c2 = rotation.Cosine * cosineCorrectionTerm;
-                return new GivensRotation(c2, s2);
+                var newRotation = new GivensRotation(c2, s2);
+                //newRotation.Normalize();
+                return newRotation;
             }
 
             /// <summary>
@@ -176,13 +178,13 @@ namespace MathNet.Numerics.LinearAlgebra.Complex.Solvers
             /// <param name="e"></param>
             /// <param name="rotation"></param>
             /// <returns></returns>
-            public static (GivensRotation, Complex f, Complex g) PassthroughRotationToRight(Complex d, Complex e, GivensRotation rotation)
+            public static (Complex f, Complex g, GivensRotation) PassthroughRotationToRight(GivensRotation rotation, Complex d, Complex e)
             {
                 var f = e;
                 var g = d;
                 var s2 = rotation.Sine;
                 var c2 = rotation.Cosine / (d * e.Conjugate());
-                return (new GivensRotation(c2, s2), f, g);
+                return (f, g, new GivensRotation(c2, s2));
             }
 
             public static (GivensRotation first, GivensRotation second, GivensRotation third) Turnover(GivensRotation g1, GivensRotation g2, GivensRotation g3)
@@ -310,6 +312,11 @@ namespace MathNet.Numerics.LinearAlgebra.Complex.Solvers
                 return new GivensRotation(Cosine, Sine);
             }
 
+            public GivensRotation CloneInverse()
+            {
+                return new GivensRotation(Cosine.Conjugate(), -Sine);
+            }
+
             public static (Complex d, Complex e, GivensRotation) GetReflectedRotation(GivensRotation rotation)
             {
                 // This swaps cosine and sine part.
@@ -351,7 +358,7 @@ namespace MathNet.Numerics.LinearAlgebra.Complex.Solvers
                 GivensRotation[] rotations = new GivensRotation[n - 1];
                 for (int i = n - 1; i > 0; --i)
                 {
-                    (rotations[i - 1], _) = GivensRotation.Create(ref vector[i - 1], ref vector[i]);
+                    (rotations[i - 1], _) = GivensRotation.CreatePositive(ref vector[i - 1], ref vector[i]);
                 }
                 return new UnitaryMatrix(rotations);
             }
@@ -376,12 +383,12 @@ namespace MathNet.Numerics.LinearAlgebra.Complex.Solvers
             /// <summary>
             /// Applys a transformation T from the right hand side to this unitary matrix U and
             /// returns the transformation S such that S * U = U * T, where
-            /// U moved one row up.
+            /// S moved one row up.
             /// </summary>
             /// <param name="transformation">The transformation T.</param>
             /// <param name="i">The first row on which T is active.</param>
             /// <returns>The transformation S and the first row on which S is active.</returns>
-            public (GivensRotation, int) ApplyTransformation(GivensRotation transformation, int i)
+            public (GivensRotation, int) ApplyTransformationRight(GivensRotation transformation, int i)
             {
                 if (i < Rotations.Length - 1)
                 {
@@ -397,6 +404,29 @@ namespace MathNet.Numerics.LinearAlgebra.Complex.Solvers
                     throw new ArgumentException($"Cannot apply a transformation active on rows {i}:{i + 1}.");
                 }
                 return (transformation, i);
+            }
+
+            /// <summary>
+            /// Applys a transformation T from the left hand side to this unitary matrix U and
+            /// returns the resulting diagonal matrix D on the right hand side:
+            /// T*U = U' * D
+            /// </summary>
+            /// <param name="transformation"></param>
+            /// <param name="i"></param>
+            /// <returns>the diagonal matrix D.</returns>
+            public Complex[] ApplyTransformationLeft(GivensRotation transformation, int i)
+            {
+                if(i > 0)
+                {
+                    throw new ArgumentException("currently not supported");
+                }
+
+                var D = Enumerable.Repeat(Complex.One, Rotations.Length + 1).ToArray();
+                var newTransformation = (GivensRotation)transformation.Clone();
+                (D[i], D[i+1]) = newTransformation.Fusion(Rotations[i]);
+                Rotations[i] = newTransformation;
+                PassthroughDiagonalToRight(D, i+1);
+                return D;
             }
 
             /// <summary>
@@ -425,9 +455,9 @@ namespace MathNet.Numerics.LinearAlgebra.Complex.Solvers
                 return (transformation, i);
             }
 
-            public Complex[] PassthroughDiagonal(Complex[] diagonal) => PassthroughDiagonal(diagonal, diagonal.Length - 2);
+            public Complex[] PassthroughDiagonalToLeft(Complex[] diagonal) => PassthroughDiagonalToLeft(diagonal, diagonal.Length - 2);
 
-            public Complex[] PassthroughDiagonal(Complex[] diagonal, int start)
+            public Complex[] PassthroughDiagonalToLeft(Complex[] diagonal, int start)
             {
                 if (diagonal.Length != Rotations.Length + 1)
                 {
@@ -438,6 +468,23 @@ namespace MathNet.Numerics.LinearAlgebra.Complex.Solvers
                 {
                     // Rotation is active on rows i and i+1.
                     (Rotations[i], diagonal[i], diagonal[i + 1]) = GivensRotation.PassthroughRotationToLeft(diagonal[i], diagonal[i + 1], Rotations[i]);
+                }
+                return diagonal;
+            }
+
+
+            public Complex[] PassthroughDiagonalToRight(Complex[] diagonal, int start)
+            {
+                if (diagonal.Length != Rotations.Length + 1)
+                {
+                    throw new ArgumentException(nameof(diagonal));
+                }
+                for (int i = start; i < Rotations.Length; ++i)
+                {
+                    // Rotation is active on rows i and i+1.
+                    (Rotations[i], diagonal[i], diagonal[i + 1]) = GivensRotation.PassthroughRotationToLeft(diagonal[i], diagonal[i + 1], Rotations[i]);
+                    diagonal[i] /= diagonal[i].Magnitude;
+                    diagonal[i + 1] /= diagonal[i + 1].Magnitude;
                 }
                 return diagonal;
             }
@@ -487,7 +534,7 @@ namespace MathNet.Numerics.LinearAlgebra.Complex.Solvers
 
             public Complex y { get; set; }
 
-            private AmvwFactorization() { }
+            public AmvwFactorization() { }
 
             /// <summary>
             /// 
@@ -497,7 +544,7 @@ namespace MathNet.Numerics.LinearAlgebra.Complex.Solvers
             public static AmvwFactorization Create(Complex[] coefficients)
             {
                 var n = coefficients.Length;
-                var Q = new GivensRotation[n];
+                var Q = new GivensRotation[n - 1];
                 var D = new Complex[n + 1];
 
                 for (var i = 0; i < n - 1; ++i)
@@ -506,7 +553,7 @@ namespace MathNet.Numerics.LinearAlgebra.Complex.Solvers
 
                     D[i] = Complex.One;
                 }
-                Q[n - 1] = new GivensRotation(1, 0);
+                //Q[n - 1] = new GivensRotation(1, 0);
                 D[n - 1] = Complex.One;
                 D[n] = Complex.One;
 
@@ -526,13 +573,13 @@ namespace MathNet.Numerics.LinearAlgebra.Complex.Solvers
 
                 (D[n-1], D[n], B.Rotations[n - 1]) = GivensRotation.GetReflectedRotation(B.Rotations[n - 1]);
 
-                D = B.PassthroughDiagonal(D, n-2);
+                D = B.PassthroughDiagonalToLeft(D, n-2);
                 yNorm /= D[0];
                 D = C.PassthroughDiagonalHermitian(D);
 
 
                 // correct negative sign which is introduced from Q_1,..,Q_{n-1}.
-                D[n] *= n % 2 == 0 ? 1 : -1;
+                D[n] *= n % 2 == 0 ? -1 : 1;
 
                 return new AmvwFactorization() { B = B, C = C, D = D, Q = new(Q), n = n, y = yNorm };
             }
@@ -559,7 +606,7 @@ namespace MathNet.Numerics.LinearAlgebra.Complex.Solvers
             {
                 var Cstar = C.GetMatrix(n + 1).ConjugateTranspose();
                 var H = B.GetMatrix(n + 1);
-                H.SetColumn(n - 1, y);
+                H.SetColumn(n - 1, H.Column(n-1) + y);
                 var R = GetDiagonalMatrix() * Cstar * H;
                 var A = Q.GetMatrix(n + 1) * R;
                 return A;
@@ -610,15 +657,16 @@ namespace MathNet.Numerics.LinearAlgebra.Complex.Solvers
                 // r_{i,i}
                 Complex a = D[0] * GetDiagonalOfR(0);
                 // r_{i+1,i+1}
-                Complex d = D[1] * GetDiagonalOfR(1);
+                Complex d = GetDiagonalOfR(1);
 
                 // h_{i,i} = c_{i,i-1} * r_{i-1,i} + c_{i,i} * r_{i,i}
                 // r_{i-1,i} = (h_{i,i} - c_{i,i} * r_{i,i}) / c_{i,i-1}
 
                 // r_{i,i+1} = (h_{i+1, i+1} - c_{i+1, i+1} * r_{i+1, i+1}) / c_{i+1, i}
-                Complex b = D[0] * (D[1] * GetDiagonalOfH(1) - C.GetDiagonal(1) * d) / C.Rotations[0].Sine;
+                Complex b = D[0] * (GetDiagonalOfH(1) - C.GetDiagonal(1) * d) / C.Rotations[0].Sine;
 
                 Complex c = 0;
+                d *= D[1];
                 return (a, b, c, d);
             }
 
@@ -710,10 +758,34 @@ namespace MathNet.Numerics.LinearAlgebra.Complex.Solvers
                 return AmvwSolver.GetWilkinsonShift(AUpperLeft, AUpperRight, ALowerLeft, ALowerRight);
             }
 
+            public void ApplyTransformationLeft(GivensRotation rotation)
+            {
+                var diagonal = Q.ApplyTransformationLeft(rotation, 0);
+                for (var i = 0; i < D.Length && i < diagonal.Length; ++i)
+                {
+                    D[i] *= diagonal[i];
+                }
+                rotation.Cosine = 1;
+                rotation.Sine = 0;
+            }
+
+            public void AbsorbTransformationInQ(GivensRotation transformation, int i)
+            {
+                if(i != n - 2)
+                {
+                    throw new ArgumentException("transformation only can be absorbed into last Q transformation.");
+                }
+                (var d, var e) = Q.Rotations[n - 2].Fusion(transformation);
+                D[n - 2] *= d;
+                D[n - 1] *= e;
+                transformation.Cosine = 1;
+                transformation.Sine = 0;
+            }
+
             public (GivensRotation transformation, int i) Passthrough(int i, GivensRotation transformation)
             {
                 // Turnover on B:
-                (transformation, i) = B.ApplyTransformation(transformation, i);
+                (transformation, i) = B.ApplyTransformationRight(transformation, i);
 
                 // Turnover on C:
                 (transformation, i) = C.ApplyTransformationConjugate(transformation, i);
@@ -724,15 +796,12 @@ namespace MathNet.Numerics.LinearAlgebra.Complex.Solvers
                 if (i == n - 2)
                 {
                     // Fuse the transformation with the last rotation in Q.
-                    (var d, var e) = Q.Rotations[i].Fusion(transformation);
-                    D[i] *= d;
-                    D[i + 1] *= e;
-                    transformation = new GivensRotation();
+                    AbsorbTransformationInQ(transformation, i);
                 }
                 else
                 {
                     // Turnover on Q:
-                    (transformation, i) = Q.ApplyTransformation(transformation, i);
+                    (transformation, i) = Q.ApplyTransformationRight(transformation, i);
                 }
                 return (transformation, i);
             }
@@ -797,6 +866,12 @@ namespace MathNet.Numerics.LinearAlgebra.Complex.Solvers
             ApplyFrancisStep(u1, factorization);
         }
 
+        /// <summary>
+        /// Applies a similarity transformation on the matrix A using u1:
+        /// un^H * ... * u1^H * A * u1 * ... * un .
+        /// </summary>
+        /// <param name="u1"></param>
+        /// <param name="factorization"></param>
         public static void ApplyFrancisStep(GivensRotation u1, AmvwFactorization factorization)
         {
             var n = factorization.n;
@@ -804,10 +879,11 @@ namespace MathNet.Numerics.LinearAlgebra.Complex.Solvers
             u1H.Invert();
 
             // fuse u1 with the first Q core transformation.
-            (var d, var e) = u1H.Fusion(factorization.Q.Rotations[0]);
-            factorization.D[0] *= d;
-            factorization.D[1] *= e;
-            factorization.Q.Rotations[0] = u1H;
+            //(var d, var e) = u1H.Fusion(factorization.Q.Rotations[0]);
+            //factorization.D[0] *= d;
+            //factorization.D[1] *= e;
+            //factorization.Q.Rotations[0] = u1H;
+            factorization.ApplyTransformationLeft(u1H);
 
             var transformation = u1;
             // i is equal to the active rows (i,i+1) the current rotation works on.
@@ -822,17 +898,20 @@ namespace MathNet.Numerics.LinearAlgebra.Complex.Solvers
         }
 
         public static List<Complex> Solve(Complex[] coefficients)
-        {
-            var m = coefficients.Length;
-
+        { 
             // The companion matrix A is factorized into:
             // A = Q * C' * (B' + e1 * y')
             // where Q, C, B are unitary and stored using Givens rotations.
             var factorization = AmvwFactorization.Create(coefficients);
+            return Solve(factorization);
+        }
+
+        public static List<Complex> Solve(AmvwFactorization factorization)
+        {
             var n = factorization.n;
             Complex Aul; Complex Aur; Complex All; Complex Alr;
 
-            for (int j = 0; j < 45; ++j)
+            for (int j = 0; j < 200; ++j)
             {
                 (var A11, var A12, var A21, var A22) = factorization.GetTopLeft();
                 (Aul, Aur, All, Alr) = factorization.GetPart(n - 2);
@@ -845,10 +924,28 @@ namespace MathNet.Numerics.LinearAlgebra.Complex.Solvers
                 Console.WriteLine(Alr);
 
                 (var u1, _) = GivensRotation.Create(A11 - shift, A21);
+                if(u1.Sine < 1e-8 && u1.Sine > -1e-8)
+                {
+                    Console.WriteLine("------------------");
+                    Console.WriteLine("------------------");
+                    Console.WriteLine("------------------");
+                    n -= 1;
+
+                    if(n <= 2)
+                    {
+                        (A11, A12, A21, A22) = factorization.GetTopLeft();
+                        Console.WriteLine(GetWilkinsonShift(A11, A12, A21, A22));
+                        break;
+                    }
+                }
                 u1.Invert();
                 Console.WriteLine($"sin: {u1.Sine}");
                 ApplyFrancisStep(u1, factorization);
+
             }
+
+            Console.WriteLine(factorization.GetMatrix());
+
 
             return null;
         }
