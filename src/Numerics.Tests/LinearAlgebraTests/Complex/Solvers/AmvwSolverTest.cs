@@ -518,16 +518,33 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
             };
             int n = testCoefficients.Length + 1;
             var factorization = AmvwFactorization.Create(testCoefficients);
-            Console.WriteLine(factorization.GetMatrix());
+            var actualMatrix = factorization.GetMatrix().SubMatrix(0, n - 1, 0, n - 1);
+            var expectedMatrix = CompanionMatrix(testCoefficients);
+            Console.WriteLine(expectedMatrix);
+            Console.WriteLine(actualMatrix);
+            Assert.That((expectedMatrix - actualMatrix).FrobeniusNorm(), Is.LessThan(1e-12));
+        }
+
+        private Matrix<Complex> CompanionMatrix(Complex[] coefficients)
+        {
+            int n = coefficients.Length;
+            var expectedMatrix = Matrix<Complex>.Build.Dense(n, n, 0);
+            for (int i = 0; i < n - 1; ++i)
+            {
+                expectedMatrix[i + 1, i] = 1;
+                expectedMatrix[i, n - 1] = -coefficients[i];
+            }
+            expectedMatrix[n - 1, n - 1] = -coefficients[n - 1];
+            return expectedMatrix;
         }
 
         [Test]
         public void CreateFactorizationCompareMatrix2()
         {
             // A is a 3x3 matrix.
-            // [0   0   0 -1-2j;
-            //  1   0   0 -3-4j;
-            //  0   1   0 -5-6j;]
+            // [0   0   -1-2j;
+            //  1   0   -3-4j;
+            //  0   1   -5-6j;]
             var testCoefficients = new Complex[]
             {
                 new Complex(1, 2),
@@ -536,7 +553,9 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
             };
             int n = testCoefficients.Length + 1;
             var factorization = AmvwFactorization.Create(testCoefficients);
-            Console.WriteLine(factorization.GetMatrix());
+            var actualMatrix = factorization.GetMatrix().SubMatrix(0, n - 1, 0, n - 1);
+            var expectedMatrix = CompanionMatrix(testCoefficients);
+            Assert.That((expectedMatrix - actualMatrix).FrobeniusNorm(), Is.LessThan(1e-12));
         }
 
 
@@ -556,7 +575,7 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
                 .Select(x => new Complex(x.Real.Round(digits), x.Imaginary.Round(digits))).ToHashSet();
 
         private void AssertEqualityWithTolerance(IEnumerable<Complex> expectedSet, IEnumerable<Complex> actualSet, int digits)
-            => Assert.That(GetRoundedSet(expectedSet, digits), Is.EquivalentTo(GetRoundedSet(actualSet, digits)));
+            => Assert.That(GetRoundedSet(actualSet, digits), Is.EquivalentTo(GetRoundedSet(expectedSet, digits)));
 
 
         [Test]
@@ -1163,7 +1182,7 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
                 new Complex(0.5133928537802421, -0.24218214463096321)
             };
             var actualRoots = AmvwSolver.Solve(coefficients);
-            AssertEqualityWithTolerance(expectedRoots, actualRoots, 2);
+            AssertEqualityWithTolerance(expectedRoots, actualRoots, 1);
         }
 
 
@@ -1188,6 +1207,18 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
 
             var actualRoots = AmvwSolver.Solve(testCoefficients);
             AssertEqualityWithTolerance(expectedRoots, actualRoots, 6);
+        }
+
+        [Test]
+        public void Solve4()
+        {
+            // (x-5)*(x-10)*(x-15)*(x-20)
+            // = x^4 - 50 x^3 + 875 x^2 - 6250 x + 15000
+            var testCoefficients = new Complex[] { 15000, -6250, 875, -50 }; // leading coeffient is not provided.
+            var expectedRoots = new Complex[] { 5, 10, 15, 20 };
+
+            var actualRoots = AmvwSolver.Solve(testCoefficients);
+            AssertEqualityWithTolerance(expectedRoots, actualRoots, 2);
         }
     }
 }

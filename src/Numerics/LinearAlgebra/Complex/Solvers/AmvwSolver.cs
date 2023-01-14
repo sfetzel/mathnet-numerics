@@ -416,16 +416,16 @@ namespace MathNet.Numerics.LinearAlgebra.Complex.Solvers
             /// <returns>the diagonal matrix D.</returns>
             public Complex[] ApplyTransformationLeft(GivensRotation transformation, int i)
             {
-                if(i > 0)
+                if (i > 0)
                 {
                     throw new ArgumentException("currently not supported");
                 }
 
                 var D = Enumerable.Repeat(Complex.One, Rotations.Length + 1).ToArray();
                 var newTransformation = (GivensRotation)transformation.Clone();
-                (D[i], D[i+1]) = newTransformation.Fusion(Rotations[i]);
+                (D[i], D[i + 1]) = newTransformation.Fusion(Rotations[i]);
                 Rotations[i] = newTransformation;
-                PassthroughDiagonalToRight(D, i+1);
+                PassthroughDiagonalToRight(D, i + 1);
                 return D;
             }
 
@@ -553,10 +553,10 @@ namespace MathNet.Numerics.LinearAlgebra.Complex.Solvers
 
                     D[i] = Complex.One;
                 }
-                //Q[n - 1] = new GivensRotation(1, 0);
                 D[n - 1] = Complex.One;
                 D[n] = Complex.One;
 
+                // correct negative sign which is introduced from Q_1,..,Q_{n-1}.
                 Complex[] x = CreateVectorX(coefficients);
                 // B_i = C_i for i=1,.., n-1
                 var C = UnitaryMatrix.Create(x);
@@ -571,20 +571,28 @@ namespace MathNet.Numerics.LinearAlgebra.Complex.Solvers
                 // factor for row one: c/(cosineNorm) = phase.
                 // factor for row two: -c'/cosineNorm = -phase'.
 
-                (D[n-1], D[n], B.Rotations[n - 1]) = GivensRotation.GetReflectedRotation(B.Rotations[n - 1]);
+                (D[n - 1], D[n], B.Rotations[n - 1]) = GivensRotation.GetReflectedRotation(B.Rotations[n - 1]);
 
-                D = B.PassthroughDiagonalToLeft(D, n-2);
+                // correct negative sign which is introduced from Q_1,..,Q_{n-1}:
+                // Z_n becomes [0, -1; 1, 0];
+                //D[n-1] *= n % 2 == 0 ? -1 : 1;
+
+                D = B.PassthroughDiagonalToLeft(D, n - 2);
                 yNorm /= D[0];
                 D = C.PassthroughDiagonalHermitian(D);
 
-
                 // correct negative sign which is introduced from Q_1,..,Q_{n-1}.
-                D[n] *= n % 2 == 0 ? -1 : 1;
+                // this happens when n is an even number.
+                if (n % 2 == 0)
+                {
+                    D[n - 1] *= -1;
+                }
+
 
                 return new AmvwFactorization() { B = B, C = C, D = D, Q = new(Q), n = n, y = yNorm };
             }
 
-            public Matrix<Complex> GetDiagonalMatrix() => Matrix<Complex>.Build.SparseOfDiagonalArray(D);
+            public Matrix<Complex> GetDiagonalMatrix() => Matrix<Complex>.Build.DiagonalOfDiagonalArray(D);
 
             public Matrix<Complex> GetYMatrix()
             {
@@ -606,7 +614,7 @@ namespace MathNet.Numerics.LinearAlgebra.Complex.Solvers
             {
                 var Cstar = C.GetMatrix(n + 1).ConjugateTranspose();
                 var H = B.GetMatrix(n + 1);
-                H.SetColumn(n - 1, H.Column(n-1) + y);
+                H.SetColumn(n - 1, H.Column(n - 1) + y);
                 var R = GetDiagonalMatrix() * Cstar * H;
                 var A = Q.GetMatrix(n + 1) * R;
                 return A;
@@ -619,15 +627,15 @@ namespace MathNet.Numerics.LinearAlgebra.Complex.Solvers
                 var x = new Complex[n + 1];
                 for (var i = 0; i < n - 1; ++i)
                 {
-                    // compensate the sign from the Q core transformations.
                     x[i] = -coefficients[i + 1];
                 }
+                // compensate the sign from the Q core transformations.
                 x[n - 1] = -coefficients[0];
                 x[n] = -1;
                 return x;
             }
 
-            public Complex GetBestWilkinsonShift()
+            public Complex GetBestWilkinsonShift(int n)
             {
                 (var Aul, var Aur, var All, var Alr) = GetPart(n - 2);
                 (var shift1, var shift2) = AmvwSolver.GetWilkinsonShift(Aul, Aur, All, Alr);
@@ -636,7 +644,7 @@ namespace MathNet.Numerics.LinearAlgebra.Complex.Solvers
                 return shift;
             }
 
-            public GivensRotation GetFirstTransformation(int n) => GetFirstTransformation(n, GetBestWilkinsonShift());
+            public GivensRotation GetFirstTransformation(int n) => GetFirstTransformation(n, GetBestWilkinsonShift(n));
 
             public GivensRotation GetFirstTransformation(int n, Complex shift)
             {
@@ -790,7 +798,7 @@ namespace MathNet.Numerics.LinearAlgebra.Complex.Solvers
 
             public void AbsorbTransformationInQ(GivensRotation transformation, int i)
             {
-                if(i != n - 2)
+                if (i != n - 2)
                 {
                     throw new ArgumentException("transformation only can be absorbed into last Q transformation.");
                 }
@@ -915,7 +923,7 @@ namespace MathNet.Numerics.LinearAlgebra.Complex.Solvers
         }
 
         public static List<Complex> Solve(Complex[] coefficients)
-        { 
+        {
             // The companion matrix A is factorized into:
             // A = Q * C' * (B' + e1 * y')
             // where Q, C, B are unitary and stored using Givens rotations.
@@ -928,16 +936,17 @@ namespace MathNet.Numerics.LinearAlgebra.Complex.Solvers
             var n = factorization.n;
             var roots = new List<Complex>();
 
-            for (int j = 0; j < 200; ++j)
+            for (int j = 0; j < 400; ++j)
             {
-                
-                if (factorization.Q.Rotations[n - 2].Sine < 1e-8)
+
+                if (factorization.Q.Rotations[n - 2].Sine < 1e-7)
                 {
                     (_, _, _, var Alr) = factorization.GetPart(n - 2);
                     roots.Add(Alr);
+                    Console.WriteLine($"deflate root {Alr}");
                     n -= 1;
 
-                    if(n <= 2)
+                    if (n <= 2)
                     {
                         (var A11, var A12, var A21, var A22) = factorization.GetTopLeft();
                         (var root1, var root2) = GetWilkinsonShift(A11, A12, A21, A22);
