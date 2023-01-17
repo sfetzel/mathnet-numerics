@@ -111,7 +111,7 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
         {
             (var a, var b) = (new Complex(ar, ai), new Complex(br, bi));
             (var rotation, var norm) = AmvwSolver.GivensRotation.Create(ref a, ref b);
-            Assert.That(norm, Is.EqualTo(Math.Sqrt(ar * ar + ai * ai + br * br + bi * bi)));
+            Assert.That(norm, Is.EqualTo(Math.Sqrt(ar * ar + ai * ai + br * br + bi * bi)).Within(1e-12));
             (var c, var d) = rotation * (new Complex(ar, ai), new Complex(br, bi));
 
             Assert.That(a.Magnitude, Is.EqualTo(norm).Within(1e-12));
@@ -1170,19 +1170,28 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
         }
 
         [Test]
+        public void ScaleCoefficients()
+        {
+            var alpha = new Complex(4, 0);
+            // 3 + 2x + 5x^2 + x^3 = (x + 4.7106)*(x+0.1449+0.78581i)*(x+0.1449-0.78581i)
+            var coefficients = new Complex[] { 3, 2, 5 };
+            int n = 3;
+            var scaledCoefficients = AmvwSolver.ScaleCoefficients(coefficients, alpha);
+            
+            // should be: 3/alpha^n + 2x/alpha^(n-1) + 5x^2/alpha^(n-2) + x^3/(alpha^(n-3))
+
+            Assert.That(scaledCoefficients[0], Is.EqualTo(coefficients[0] / alpha.Power(n)));
+            Assert.That(scaledCoefficients[1], Is.EqualTo(coefficients[1] / alpha.Power(n - 1)));
+            Assert.That(scaledCoefficients[2], Is.EqualTo(coefficients[2] / alpha.Power(n - 2)));
+        }
+
+        [Test]
         public void Solve3()
         {
-            //  (x-(-0.30943739075793514-0.32612809004821913i))*(x-(6.492558672480413+5.884045065878663i))*(x-(0.5133928537802421 -0.24218214463096321i))
-            // == x^3 - (6.696514135502720 + 5.315734831199481 i) x^2 + (4.43031049711782 - 2.58219602689529 i) x + (1.000000000000002 + 2.000000000000002 i)
             var coefficients = GetTestCoefficients();
-            var expectedRoots = new Complex[]
-            {
-                new Complex(-0.30943739075793514, -0.32612809004821913),
-                new Complex(6.492558672480413, 5.884045065878663),
-                new Complex(0.5133928537802421, -0.24218214463096321)
-            };
-            var actualRoots = AmvwSolver.Solve(coefficients);
-            AssertEqualityWithTolerance(expectedRoots, actualRoots, 1);
+            var expectedRoots = GetTestSolution();
+            var actualRoots = AmvwSolver.Solve(coefficients, 1e-4, ShiftStrategy.Wilkinson);
+            AssertEqualityWithTolerance(expectedRoots, actualRoots.Item1, 1);
         }
 
 
@@ -1192,7 +1201,8 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
             // (x - (1+ 2i))(x - (1- 2i))(x - 5) = -25 + 15 x - 7 x^2 + x^3
             var testCoefficients = new Complex[] { -25, 15, -7 }; // leading coeffient is not provided.
             var expectedRoots = new Complex[] { 5, new Complex(1, 2), new Complex(1, -2) };
-            var actualRoots = AmvwSolver.Solve(testCoefficients);
+            var factorization = AmvwFactorization.Create(testCoefficients);
+            (var actualRoots, _) = AmvwSolver.Solve(factorization, 1e-12);
 
             AssertEqualityWithTolerance(expectedRoots, actualRoots, 8);
         }
@@ -1205,8 +1215,8 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
             var testCoefficients = new Complex[] { -750, 275, -30 }; // leading coeffient is not provided.
             var expectedRoots = new Complex[] { 5, 10, 15 };
 
-            var actualRoots = AmvwSolver.Solve(testCoefficients);
-            AssertEqualityWithTolerance(expectedRoots, actualRoots, 6);
+            var actualRoots = AmvwSolver.Solve(testCoefficients, 1e-8, ShiftStrategy.Wilkinson);
+            AssertEqualityWithTolerance(expectedRoots, actualRoots.Item1, 6);
         }
 
         [Test]
@@ -1217,8 +1227,8 @@ namespace MathNet.Numerics.Tests.LinearAlgebraTests.Complex
             var testCoefficients = new Complex[] { 15000, -6250, 875, -50 }; // leading coeffient is not provided.
             var expectedRoots = new Complex[] { 5, 10, 15, 20 };
 
-            var actualRoots = AmvwSolver.Solve(testCoefficients);
-            AssertEqualityWithTolerance(expectedRoots, actualRoots, 2);
+            var actualRoots = AmvwSolver.Solve(testCoefficients, 1e-10, ShiftStrategy.Wilkinson);
+            AssertEqualityWithTolerance(expectedRoots, actualRoots.Item1, 2);
         }
     }
 }

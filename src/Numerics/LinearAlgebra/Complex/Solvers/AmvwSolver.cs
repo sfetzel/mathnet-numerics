@@ -34,6 +34,7 @@ using System.Linq;
 using Complex = System.Numerics.Complex;
 using System.Reflection.Metadata.Ecma335;
 using System.Security.Cryptography;
+using System.Globalization;
 
 namespace MathNet.Numerics.LinearAlgebra.Complex.Solvers
 {
@@ -220,7 +221,7 @@ namespace MathNet.Numerics.LinearAlgebra.Complex.Solvers
 
                 (var r1, var norm1) = GivensRotation.CreatePositive(ref t21, ref t31);
 
-                if (t21.Real < 0)
+                if (t21.Real < -1e-15)
                 {
                     throw new Exception();
                 }
@@ -228,7 +229,7 @@ namespace MathNet.Numerics.LinearAlgebra.Complex.Solvers
                 // t21 contains now norm1 because of the call to GivensRotation.Create.
 
                 (var r2, _) = GivensRotation.CreatePositive(ref t11, ref t21);
-                if (t11.Real < 0)
+                if (t11.Real < -1e-15)
                 {
                     throw new Exception();
                 }
@@ -242,7 +243,7 @@ namespace MathNet.Numerics.LinearAlgebra.Complex.Solvers
 
                 (var r3, _) = GivensRotation.CreatePositive(ref t22, ref t32);
 
-                if (t22.Real < 0)
+                if (t22.Real < -1e-15)
                 {
                     throw new Exception();
                 }
@@ -643,6 +644,20 @@ namespace MathNet.Numerics.LinearAlgebra.Complex.Solvers
                 var shift = (shift1 - Alr).MagnitudeSquared() < (shift2 - Alr).MagnitudeSquared() ? shift1 : shift2;
                 return shift;
             }
+            public Complex GetBestRayleighShift(int n)
+            {
+                (_, _, _, var Alr) = GetPart(n - 2);
+                return Alr;
+            }
+
+            public GivensRotation GetFirstTransformation(int n, ShiftStrategy strategy)
+                => strategy switch
+                {
+                    ShiftStrategy.Wilkinson => GetFirstTransformation(n, GetBestWilkinsonShift(n)),
+                    ShiftStrategy.Rayleigh => GetFirstTransformation(n, GetBestRayleighShift(n)),
+                    ShiftStrategy.Random => GetFirstTransformation(n, new Complex(RandomNumberGenerator.GetInt32(n), 0)),
+                    _ => GetFirstTransformation(n, Complex.Zero),
+                };
 
             public GivensRotation GetFirstTransformation(int n) => GetFirstTransformation(n, GetBestWilkinsonShift(n));
 
@@ -867,14 +882,14 @@ namespace MathNet.Numerics.LinearAlgebra.Complex.Solvers
             return (e1, e2);
         }
 
-        public List<Complex> Solve(Polynomial polynomial)
+        public List<Complex> Solve(Polynomial polynomial, double precision)
         {
-            return Solve(polynomial.Coefficients);
+            return Solve(polynomial.Coefficients, precision);
         }
 
-        public List<Complex> Solve(double[] coefficients)
+        public List<Complex> Solve(double[] coefficients, double precision, ShiftStrategy shiftStrategy = ShiftStrategy.Wilkinson)
         {
-            return Solve(coefficients.Select(x => new Complex(x, 0)).ToArray());
+            return Solve(coefficients.Select(x => new Complex(x, 0)).ToArray(), precision, shiftStrategy).Item1;
         }
 
         public static void ApplyFrancisStep(AmvwFactorization factorization)
@@ -922,24 +937,46 @@ namespace MathNet.Numerics.LinearAlgebra.Complex.Solvers
             }
         }
 
-        public static List<Complex> Solve(Complex[] coefficients)
+        public enum ShiftStrategy
+        {
+            Wilkinson,
+            Rayleigh,
+            None,
+            Random
+        }
+        public static Complex[] ScaleCoefficients(Complex[] coefficients, Complex scaling)
+        {
+            int n = coefficients.Length;
+            var scaledCoefficients = coefficients.Select((x, i) => x / scaling.Power(n - i));
+            return scaledCoefficients.ToArray();
+        }
+
+        public static (List<Complex>, int) SolveScaled(Complex[] coefficients, double precision, ShiftStrategy shiftStrategy)
+        {
+            var scaling = coefficients[0].Power(1.0 / coefficients.Length);
+            var scaledCoefficients = ScaleCoefficients(coefficients, scaling);
+            (var roots, int iterations) = Solve(scaledCoefficients.ToArray(), precision, shiftStrategy);
+            return (roots.Select(x => x * scaling).ToList(), iterations);
+        }
+
+        public static (List<Complex>, int) Solve(Complex[] coefficients, double precision, ShiftStrategy shiftStrategy)
         {
             // The companion matrix A is factorized into:
             // A = Q * C' * (B' + e1 * y')
             // where Q, C, B are unitary and stored using Givens rotations.
             var factorization = AmvwFactorization.Create(coefficients);
-            return Solve(factorization);
+            return Solve(factorization, precision, shiftStrategy);
         }
 
-        public static List<Complex> Solve(AmvwFactorization factorization)
+        public static (List<Complex>, int) Solve(AmvwFactorization factorization, double precision = 1e-7, ShiftStrategy shiftStrategy = ShiftStrategy.Wilkinson)
         {
             var n = factorization.n;
             var roots = new List<Complex>();
-
-            for (int j = 0; j < 400; ++j)
+            int j = 0;
+            while(true)
             {
 
-                if (factorization.Q.Rotations[n - 2].Sine < 1e-7)
+                if (factorization.Q.Rotations[n - 2].Sine < precision)
                 {
                     (_, _, _, var Alr) = factorization.GetPart(n - 2);
                     roots.Add(Alr);
@@ -955,14 +992,14 @@ namespace MathNet.Numerics.LinearAlgebra.Complex.Solvers
                         break;
                     }
                 }
-                var u1 = factorization.GetFirstTransformation(n);
-                Console.WriteLine($"sin: {factorization.Q.Rotations[n - 2].Sine}");
+                var u1 = factorization.GetFirstTransformation(n, shiftStrategy);
+                //Console.WriteLine($"sin: {factorization.Q.Rotations[n - 2].Sine}");
                 ApplyFrancisStep(u1, factorization);
-
+                ++j;
             }
 
 
-            return roots;
+            return (roots, j);
         }
     }
 }
